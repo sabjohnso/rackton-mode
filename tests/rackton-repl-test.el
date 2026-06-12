@@ -69,6 +69,34 @@
     (should (equal (rackton-repl--region-forms (point-min) (point-max))
                    '("(define a 1)" "(define (b x)\n  x)")))))
 
+;;; Unit: input ergonomics
+
+(ert-deftest rackton-repl-strips-continuation-prompts ()
+  (should (equal (rackton-repl--strip-continuations "..> ..> λ> ") "λ> "))
+  (should (equal (rackton-repl--strip-continuations "..> sqr :: t\n")
+                 "sqr :: t\n"))
+  (should (equal (rackton-repl--strip-continuations "plain\n") "plain\n")))
+
+(ert-deftest rackton-repl-input-complete-p-checks-balance ()
+  (should (rackton-repl--input-complete-p "(sqr 2)"))
+  (should (rackton-repl--input-complete-p "42"))
+  (should (rackton-repl--input-complete-p "(match m\n  [(Some x) x])"))
+  (should-not (rackton-repl--input-complete-p "(define (f x)"))
+  (should-not (rackton-repl--input-complete-p "\"unterminated")))
+
+(ert-deftest rackton-repl-buffer-fontifies-rackton-code ()
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert "λ> (define (f x) (Some x))")
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "define")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-keyword-face))
+    (search-forward "Some")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-constructor-face))))
+
 ;;; Integration: transport
 
 (ert-deftest rackton-repl-starts-and-prompts ()
@@ -83,6 +111,43 @@
   (should (rackton-test--wait-for
            (lambda () (rackton-test--repl-contains-p "42 :: Integer"))
            15)))
+
+(ert-deftest rackton-repl-return-sends-complete-input ()
+  (rackton-test--ensure-repl)
+  (with-current-buffer (rackton-repl--buffer)
+    (goto-char (point-max))
+    (insert "(* 5 5)")
+    (rackton-repl-return))
+  (should (rackton-test--wait-for
+           (lambda () (rackton-test--repl-contains-p "25 :: Integer"))
+           15)))
+
+(ert-deftest rackton-repl-return-continues-incomplete-input ()
+  (rackton-test--ensure-repl)
+  (with-current-buffer (rackton-repl--buffer)
+    (goto-char (point-max))
+    (let ((input-start (process-mark (rackton-repl--process))))
+      (unwind-protect
+          (progn
+            (insert "(define (ninth x)")
+            (rackton-repl-return)
+            ;; Not sent: the text still sits in the input region...
+            (should (string-prefix-p "(define (ninth x)\n"
+                                     (buffer-substring-no-properties
+                                      input-start (point-max))))
+            ;; ...and the new line is indented under the define, prompt
+            ;; width included: "λ> (" puts the paren at column 3, body at 5.
+            (should (= (current-column) 5)))
+        ;; Clean the half-typed input up for the tests that follow.
+        (delete-region input-start (point-max))))))
+
+(ert-deftest rackton-repl-multiline-send-shows-no-continuation-prompts ()
+  (rackton-test--ensure-repl)
+  (rackton-repl--send-form "(define (tenth x)\n  (* 10 x))")
+  (should (rackton-test--wait-for
+           (lambda () (rackton-test--repl-contains-p "tenth ::"))
+           15))
+  (should-not (rackton-test--repl-contains-p "..>")))
 
 ;;; Integration: query channel
 

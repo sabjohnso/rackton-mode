@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.0
+;; Version: 0.4.1
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -56,10 +56,71 @@
   "Major mode for the inferior Rackton REPL.
 
 \\{inferior-rackton-mode-map}"
+  (set-syntax-table rackton-mode-syntax-table)
   (setq-local comint-prompt-regexp rackton-repl-prompt-regexp)
   (setq-local comint-prompt-read-only t)
   (setq-local indent-tabs-mode nil)
-  (setq-local lisp-indent-function #'rackton--indent-function))
+  (setq-local lisp-indent-function #'rackton--indent-function)
+  (setq-local indent-line-function #'rackton-repl--indent-line)
+  ;; The piped REPL answers every continuation line of a multi-line
+  ;; form with a "..> " prompt; in a comint buffer they are noise.
+  (add-hook 'comint-preoutput-filter-functions
+            #'rackton-repl--strip-continuations nil t)
+  (font-lock-add-keywords nil rackton-font-lock-keywords))
+
+(define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
+
+(defconst rackton-repl--continuation-regexp "\\.\\.> "
+  "The piped REPL's continuation prompt.")
+
+(defun rackton-repl--strip-continuations (output)
+  "Remove the REPL's ..> continuation prompts from OUTPUT."
+  (replace-regexp-in-string rackton-repl--continuation-regexp "" output))
+
+(defun rackton-repl--input-complete-p (input)
+  "Non-nil when INPUT has no unclosed parenthesis or string."
+  (with-temp-buffer
+    (set-syntax-table rackton-mode-syntax-table)
+    (insert input)
+    (let ((state (parse-partial-sexp (point-min) (point-max))))
+      (and (<= (car state) 0)          ; no unclosed parens
+           (not (nth 3 state))))))     ; not inside a string
+
+(defun rackton-repl-return ()
+  "Send the input when it is complete; otherwise open an indented line."
+  (interactive)
+  (let* ((proc (get-buffer-process (current-buffer)))
+         (input (and proc
+                     (buffer-substring-no-properties
+                      (process-mark proc) (point-max)))))
+    (if (and input (rackton-repl--input-complete-p input))
+        (comint-send-input)
+      (newline-and-indent))))
+
+(defun rackton-repl--indent-line ()
+  "Indent the current line of REPL input.
+Narrows to the region from the prompt line's beginning, so the
+indentation engine never scans backward into earlier process output
+yet still counts real columns — the prompt is ordinary text on the
+input's first line, and `λ> ' contains no delimiters to confuse the
+parse."
+  (let* ((proc (get-buffer-process (current-buffer)))
+         (start (and proc (marker-position (process-mark proc))))
+         ;; `forward-line', unlike `line-beginning-position', ignores
+         ;; the prompt's field property and reaches the real line start.
+         (prompt-bol (and start (save-excursion (goto-char start)
+                                                (forward-line 0)
+                                                (point))))
+         (point-bol (save-excursion (forward-line 0) (point))))
+    ;; Only continuation lines are indentable: the first input line
+    ;; starts right after the (read-only) prompt.
+    (if (and start
+             (> (point) start)
+             (> point-bol prompt-bol))
+        (save-restriction
+          (narrow-to-region prompt-bol (point-max))
+          (lisp-indent-line))
+      'noindent)))
 
 (defun rackton-repl--buffer ()
   "The REPL buffer, or nil when none exists."
