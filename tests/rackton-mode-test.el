@@ -95,13 +95,65 @@
     (should (rackton-test--has-face-p code "parse"
                                       'font-lock-function-name-face))))
 
-(ert-deftest rackton-mode-fontifies-capitalized-names-as-types ()
-  (should (rackton-test--has-face-p
-           "(data (Maybe a) None (Some a))"
-           "Maybe" 'font-lock-type-face))
+(ert-deftest rackton-mode-fontifies-constructors-in-expressions ()
   (should (rackton-test--has-face-p
            "(from-maybe 0 (Some 7))"
-           "Some" 'font-lock-type-face)))
+           "Some" 'rackton-constructor-face))
+  (should (rackton-test--has-face-p
+           "(fold-left max 0 Nil)"
+           "Nil" 'rackton-constructor-face)))
+
+(ert-deftest rackton-mode-fontifies-constructors-in-patterns ()
+  (let ((code "(match m\n  [(Some x) x]\n  [None 0])"))
+    (should (rackton-test--has-face-p code "Some" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "None" 'rackton-constructor-face))))
+
+(ert-deftest rackton-mode-fontifies-data-declarations ()
+  (let ((code "(data (Maybe a) None (Some a))"))
+    (should (rackton-test--has-face-p code "Maybe" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "None" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Some" 'rackton-constructor-face)))
+  ;; constructor fields are types
+  (let ((code "(data Expr (EInt Integer))"))
+    (should (rackton-test--has-face-p code "EInt" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Integer" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-gadt-clauses ()
+  (let ((code "(data (Tagged a)\n  (IntTag : (Tagged Integer)))"))
+    (should (rackton-test--has-face-p code "Tagged" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "IntTag" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Tagged Integer"
+                                      'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Integer" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-struct-declarations ()
+  (let ((code "(struct Point\n  [x : Integer]\n  [y : Integer]\n  #:deriving Eq Show)"))
+    (should (rackton-test--has-face-p code "Point" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Integer" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Eq" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Show" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-signature-types ()
+  (let ((code "(: parse (-> SExpr (Result Expr)))"))
+    (should (rackton-test--has-face-p code "SExpr" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Result" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-instance-heads-as-types ()
+  ;; the head names types; default-method bodies are expressions
+  (let ((code "(instance (Functor Box)\n  (define (fmap f b) (MkBox (f b))))"))
+    (should (rackton-test--has-face-p code "Functor" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Box" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "MkBox" 'rackton-constructor-face))))
+
+(ert-deftest rackton-mode-fontifies-ann-positions ()
+  (let ((code "(ann (Some 1) (Maybe Integer))"))
+    (should (rackton-test--has-face-p code "Some" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Maybe" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-export-spec-names-as-types ()
+  (let ((code "(provide (data-out Maybe) (struct-out Point))"))
+    (should (rackton-test--has-face-p code "Maybe" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Point" 'font-lock-type-face))))
 
 (ert-deftest rackton-mode-leaves-lowercase-identifiers-plain ()
   (should-not (rackton-test--face-at "(from-maybe d m)" "from-maybe")))

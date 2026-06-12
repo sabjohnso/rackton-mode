@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.2.0
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -26,6 +26,16 @@
 ;;; Code:
 
 (require 'scheme)
+
+(defgroup rackton nil
+  "Editing Rackton code."
+  :group 'languages
+  :prefix "rackton-")
+
+(defface rackton-constructor-face
+  '((t :inherit font-lock-constant-face))
+  "Face for Rackton data constructors."
+  :group 'rackton)
 
 ;;; Surface forms
 ;;
@@ -59,6 +69,126 @@ reference.")
   "\\_<[A-Z][[:alnum:]!?_/-]*\\_>"
   "Capitalized identifiers: types and data constructors by convention.")
 
+;;; Telling types and constructors apart
+;;
+;; Types and data constructors share one lexical shape, so the
+;; classification is positional: a capitalized name is a TYPE when an
+;; enclosing form puts it in type-level position (a `(: ...)'
+;; signature, an arrow, a declaration head, a constructor's field, the
+;; tail of a GADT clause, a #:deriving list, an export spec), and a
+;; CONSTRUCTOR otherwise (expressions, match patterns, and the
+;; constructor names a `data'/GADT declaration introduces).
+
+(defconst rackton--type-form-heads
+  '(: -> All foreign foreign-c define-alias
+      data-out struct-out protocol-out)
+  "Heads of forms whose every capitalized name is type-level.")
+
+(defconst rackton--typed-head-forms
+  '(data struct newtype class instance protocol racket)
+  "Forms whose first argument is a type-level head.")
+
+(defconst rackton--data-forms '(data struct newtype)
+  "Declaration forms whose body introduces constructors.")
+
+(defun rackton--symbol-at (pos)
+  "Return the symbol starting at POS, or nil."
+  (save-excursion
+    (goto-char pos)
+    (when (looking-at "\\(?:\\sw\\|\\s_\\)+")
+      (intern-soft (match-string-no-properties 0)))))
+
+(defun rackton--element-start (open n)
+  "Start position of element N (0 = head) of the form opening at OPEN.
+Return nil when the form has fewer elements."
+  (save-excursion
+    (goto-char (1+ open))
+    (condition-case nil
+        (progn
+          (dotimes (_ n) (forward-sexp 1))
+          (forward-sexp 1)
+          (backward-sexp 1)
+          (point))
+      (scan-error nil))))
+
+(defun rackton--colon-clause-p (open)
+  "Non-nil when the form at OPEN has `:' as its second element.
+That shape is a GADT constructor clause or a struct field."
+  (let ((second (rackton--element-start open 1)))
+    (and second (eq (rackton--symbol-at second) ':))))
+
+(defun rackton--after-deriving-p (open child)
+  "Non-nil when CHILD follows #:deriving directly inside the form at OPEN."
+  (save-excursion
+    (goto-char child)
+    (and (re-search-backward "#:deriving\\_>" (1+ open) t)
+         (= (car (syntax-ppss))
+            (1+ (car (syntax-ppss open)))))))
+
+(defun rackton--type-position-p (pos)
+  "Non-nil when the capitalized name at POS occupies a type position.
+Walks the enclosing forms from the inside out; the first form that
+determines type-ness or constructor-ness wins, and a name with no
+deciding context is a constructor."
+  (let ((opens (reverse (nth 9 (syntax-ppss pos)))) ; innermost first
+        (child pos)
+        (decided nil))
+    (while (and opens (not decided))
+      (let* ((open (car opens))
+             (head (rackton--symbol-at (1+ open))))
+        (cond
+         ((memq head rackton--type-form-heads)
+          (setq decided 'type))
+         ;; (Ctor : type ...) or [field : Type]
+         ((rackton--colon-clause-p open)
+          (setq decided (if (eq child (rackton--element-start open 0))
+                            'constructor
+                          'type)))
+         ;; declaration head: (data (Maybe a) ...), (instance (Eq Box) ...)
+         ((and (memq head rackton--typed-head-forms)
+               (eq child (rackton--element-start open 1)))
+          (setq decided 'type))
+         ;; the rest of a data/struct/newtype body
+         ((memq head rackton--data-forms)
+          (setq decided
+                (cond ((rackton--after-deriving-p open child) 'type)
+                      ;; a bare nullary constructor, e.g. None
+                      ((eq child pos) 'constructor)
+                      ;; the head of a constructor clause, e.g. (Some a)
+                      ((eq pos (rackton--element-start child 0)) 'constructor)
+                      ;; a constructor's field, e.g. Integer in (EInt Integer)
+                      (t 'type))))
+         ;; (ann expr type) — type-level after the expression
+         ((and (eq head 'ann)
+               (not (eq child (rackton--element-start open 1))))
+          (setq decided 'type)))
+        (setq child open
+              opens (cdr opens))))
+    (eq decided 'type)))
+
+(defun rackton--search-capitalized (limit pred)
+  "Find the next capitalized name before LIMIT whose start satisfies PRED.
+Set the match data and leave point after the name; return non-nil when
+found, as a font-lock matcher must."
+  (let (found)
+    (while (and (not found)
+                (re-search-forward rackton--type-name-regexp limit t))
+      ;; The predicate may move point (e.g. `syntax-ppss'); restore it
+      ;; so the search always advances.
+      (setq found (save-excursion
+                    (save-match-data
+                      (funcall pred (match-beginning 0))))))
+    found))
+
+(defun rackton--match-type-name (limit)
+  "Font-lock matcher: the next type-position capitalized name before LIMIT."
+  (rackton--search-capitalized limit #'rackton--type-position-p))
+
+(defun rackton--match-constructor (limit)
+  "Font-lock matcher: the next constructor-position name before LIMIT."
+  (rackton--search-capitalized
+   limit (lambda (pos) (not (rackton--type-position-p pos)))))
+
 (defconst rackton-font-lock-keywords
   `((,(concat "(" (regexp-opt (append rackton-definition-forms
                                       rackton-expression-forms
@@ -69,7 +199,8 @@ reference.")
     ("(\\(:\\)[ \t\n]+\\(\\(?:\\sw\\|\\s_\\)+\\)"
      (1 font-lock-keyword-face)
      (2 font-lock-function-name-face))
-    (,rackton--type-name-regexp . font-lock-type-face))
+    (rackton--match-type-name . font-lock-type-face)
+    (rackton--match-constructor . 'rackton-constructor-face))
   "Font-lock rules layered on top of those inherited from scheme-mode.")
 
 ;;; Indentation

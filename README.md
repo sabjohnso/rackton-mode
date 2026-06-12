@@ -7,8 +7,15 @@ functional language (in the style of Coalton) embedded in Racket.
 
 - Automatic mode selection for files beginning with `#lang rackton`.
 - Font-lock for Rackton's surface forms (`data`, `class`, `instance`,
-  `match`, `do`, …), `(: name type)` signatures, and the convention
-  that capitalized names are types or data constructors.
+  `match`, `do`, …), module import/export forms and their spec
+  introducers, and `(: name type)` signatures.
+- Types and data constructors are distinguished by position, not just
+  capitalization: names in type positions (signatures, arrows,
+  declaration heads, constructor fields, GADT clause tails,
+  `#:deriving` lists, export specs) get `font-lock-type-face`, while
+  constructors in expressions, patterns, and `data` bodies get
+  `rackton-constructor-face` (inherits `font-lock-constant-face`;
+  customize it via `M-x customize-face`).
 - Indentation rules for Rackton's special forms, including the `do`
   style used throughout the rackton repository: binding clauses align
   under the first binding, the trailing expression sits at body indent.
