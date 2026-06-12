@@ -111,6 +111,20 @@
            "(define (from-maybe d m) d)"
            "from-maybe" 'font-lock-function-name-face)))
 
+(ert-deftest rackton-mode-fontifies-module-forms ()
+  (let ((code (concat "(require rackton/data/list (only-in m f))\n"
+                      "(provide (all-defined-out)\n"
+                      "         (all-from-out m)\n"
+                      "         (data-out Maybe)\n"
+                      "         (struct-out Point)\n"
+                      "         (protocol-out Stack)\n"
+                      "         (rename-out [f g])\n"
+                      "         (except-out (all-from-out m) f))")))
+    (dolist (form '("require" "only-in" "provide" "all-defined-out"
+                    "all-from-out" "data-out" "struct-out" "protocol-out"
+                    "rename-out" "except-out"))
+      (should (rackton-test--has-face-p code form 'font-lock-keyword-face)))))
+
 (ert-deftest rackton-mode-keywords-in-strings-stay-strings ()
   (should (rackton-test--has-face-p
            "(println \"data and match walk in\")"

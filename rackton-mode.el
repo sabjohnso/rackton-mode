@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -45,6 +45,14 @@
     "handle" "escape" "proc" "rec" "feed" "update" "via" "racket")
   "Forms that head Rackton expressions.")
 
+(defconst rackton-module-forms
+  '("require" "only-in"
+    "provide" "all-defined-out" "all-from-out" "data-out" "struct-out"
+    "protocol-out" "rename-out" "except-out")
+  "Module import/export forms and their spec sub-form introducers.
+See the \"Module forms\" and \"provide-specs\" sections of the Rackton
+reference.")
+
 ;;; Font-lock
 
 (defconst rackton--type-name-regexp
@@ -53,7 +61,8 @@
 
 (defconst rackton-font-lock-keywords
   `((,(concat "(" (regexp-opt (append rackton-definition-forms
-                                      rackton-expression-forms)
+                                      rackton-expression-forms
+                                      rackton-module-forms)
                               'symbols))
      (1 font-lock-keyword-face))
     ;; (: name type) — a top-level type signature.
