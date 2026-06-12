@@ -87,15 +87,33 @@
 (ert-deftest rackton-repl-buffer-fontifies-rackton-code ()
   (with-temp-buffer
     (inferior-rackton-mode)
-    (insert "λ> (define (f x) (Some x))")
+    (insert "λ> (define (eff x) (Some x))")
     (font-lock-ensure)
     (goto-char (point-min))
     (search-forward "define")
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'font-lock-keyword-face))
+    (search-forward "eff")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-function-name-face))
     (search-forward "Some")
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'rackton-constructor-face))))
+
+(ert-deftest rackton-repl-submitted-input-keeps-fontification ()
+  (rackton-test--ensure-repl)
+  (with-current-buffer (rackton-repl--buffer)
+    (goto-char (point-max))
+    (insert "(define (eleventh x) x)")
+    (font-lock-ensure)                  ; fontify the pending input
+    (let ((pos (save-excursion (search-backward "define"))))
+      (rackton-repl-return)
+      ;; Sending must not strip the fontification the input had...
+      (should (eq (get-text-property pos 'face)
+                  'font-lock-keyword-face))
+      ;; ...nor stamp it with comint's input face, which shadows the
+      ;; `face' property wherever font-lock is live.
+      (should-not (get-text-property pos 'font-lock-face)))))
 
 ;;; Integration: transport
 

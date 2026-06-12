@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.1
+;; Version: 0.4.2
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -59,6 +59,10 @@
   (set-syntax-table rackton-mode-syntax-table)
   (setq-local comint-prompt-regexp rackton-repl-prompt-regexp)
   (setq-local comint-prompt-read-only t)
+  ;; Sent input keeps its font-lock fontification; comint would
+  ;; otherwise stamp it with the comint-highlight-input face, which
+  ;; shadows the syntax highlighting.
+  (setq-local comint-highlight-input nil)
   (setq-local indent-tabs-mode nil)
   (setq-local lisp-indent-function #'rackton--indent-function)
   (setq-local indent-line-function #'rackton-repl--indent-line)

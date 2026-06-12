@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.1
+;; Version: 0.4.2
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -199,6 +199,12 @@ found, as a font-lock matcher must."
     ("(\\(:\\)[ \t\n]+\\(\\(?:\\sw\\|\\s_\\)+\\)"
      (1 font-lock-keyword-face)
      (2 font-lock-function-name-face))
+    ;; The name a define binds: (define (name ...) ...) or
+    ;; (define name ...).  Stated here rather than inherited from
+    ;; scheme-mode's keywords so buffers that only add these keywords
+    ;; (the REPL) highlight it too.
+    ("(define[ \t\n]+(?\\(\\(?:\\sw\\|\\s_\\)+\\)"
+     (1 font-lock-function-name-face))
     (rackton--match-type-name . font-lock-type-face)
     (rackton--match-constructor . 'rackton-constructor-face))
   "Font-lock rules layered on top of those inherited from scheme-mode.")
