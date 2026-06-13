@@ -56,6 +56,7 @@ comint buffer. From any `rackton-mode` buffer:
 | `C-c C-s` | `rackton-show-source`     | show the form that bound a name (`,source`)|
 | `C-c C-a` | `rackton-accepts`         | search by accepted argument type (`,accepts`) |
 | `C-c M-o` | `rackton-repl-clear-buffer` | clear the REPL display (keeps the session) |
+| `C-c M-r` | `rackton-repl-reset`      | reset the session, discarding all definitions (`,clear`) |
 
 When the REPL is running, eldoc shows the inferred type of the symbol
 at point (cached; the cache empties whenever code is sent).

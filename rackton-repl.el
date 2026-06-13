@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.7
+;; Version: 0.4.8
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -354,6 +354,21 @@ binding it holds are untouched.  Callable from any buffer."
     (with-current-buffer buf
       (comint-clear-buffer))))
 
+;;; Layer 3: resetting the session
+
+(defun rackton-repl-reset ()
+  "Reset the Rackton REPL session to a fresh prelude, after confirming.
+Discards every definition, data type, class, and instance made since
+the session began (Rackton's ,clear).  The displayed output is kept;
+use `rackton-repl-clear-buffer' to erase that.  Sending the command
+also clears the cached eldoc types, since the bindings they describe
+are gone."
+  (interactive)
+  (unless (rackton-repl--live-p)
+    (user-error "No Rackton REPL is running"))
+  (when (y-or-n-p "Reset the Rackton session, discarding all definitions? ")
+    (rackton-repl--send-form ",clear")))
+
 ;;; Layer 3: eldoc
 
 (defun rackton-repl--type-of (name)
@@ -393,6 +408,8 @@ already running — eldoc must never launch a process."
 (define-key rackton-mode-map (kbd "C-c C-a") #'rackton-accepts)
 (define-key rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
 (define-key inferior-rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
+(define-key rackton-mode-map (kbd "C-c M-r") #'rackton-repl-reset)
+(define-key inferior-rackton-mode-map (kbd "C-c M-r") #'rackton-repl-reset)
 
 (provide 'rackton-repl)
 ;;; rackton-repl.el ends here

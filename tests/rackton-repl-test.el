@@ -301,6 +301,40 @@
   (cl-letf (((symbol-function 'rackton-repl--buffer) (lambda () nil)))
     (should-error (rackton-repl-clear-buffer) :type 'user-error)))
 
+;;; Integration: session reset
+
+(ert-deftest rackton-repl-reset-wipes-session ()
+  (rackton-test--ensure-repl)
+  (rackton-repl-query "(define (reset-probe x) x)")
+  (should (string-match-p "::" (rackton-repl-query ",type reset-probe")))
+  (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+    (rackton-repl-reset))
+  ;; Wait for ,clear to land (its visible confirmation), then the
+  ;; earlier definition is gone.
+  (should (rackton-test--wait-for
+           (lambda () (rackton-test--repl-contains-p "session cleared"))
+           15))
+  (should-not (string-match-p "::" (rackton-repl-query ",type reset-probe"))))
+
+(ert-deftest rackton-repl-reset-declined-keeps-session ()
+  (rackton-test--ensure-repl)
+  (rackton-repl-query "(define (keep-probe x) x)")
+  (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
+    (rackton-repl-reset))
+  ;; Declining sends nothing: the binding survives.
+  (should (string-match-p "::" (rackton-repl-query ",type keep-probe"))))
+
+(ert-deftest rackton-repl-reset-clears-type-cache ()
+  (rackton-test--ensure-repl)
+  (puthash "stale" "stale :: Integer" rackton-repl--type-cache)
+  (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+    (rackton-repl-reset))
+  (should (= 0 (hash-table-count rackton-repl--type-cache))))
+
+(ert-deftest rackton-repl-reset-errors-without-repl ()
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () nil)))
+    (should-error (rackton-repl-reset) :type 'user-error)))
+
 ;;; Integration: eldoc
 
 (ert-deftest rackton-repl-eldoc-reports-type-of-symbol-at-point ()
