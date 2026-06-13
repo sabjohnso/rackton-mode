@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.6
+;; Version: 0.4.7
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -341,6 +341,19 @@ Hoogle-style search by argument position, answered by the REPL's
   (interactive "sAccepts type: ")
   (rackton-repl--show-doc (rackton-repl-query (concat ",accepts " type))))
 
+;;; Layer 3: clearing the display
+
+(defun rackton-repl-clear-buffer ()
+  "Erase the Rackton REPL's displayed output, keeping the session.
+Everything above the current prompt is removed; the process and every
+binding it holds are untouched.  Callable from any buffer."
+  (interactive)
+  (let ((buf (rackton-repl--buffer)))
+    (unless (and buf (comint-check-proc buf))
+      (user-error "No Rackton REPL is running"))
+    (with-current-buffer buf
+      (comint-clear-buffer))))
+
 ;;; Layer 3: eldoc
 
 (defun rackton-repl--type-of (name)
@@ -378,6 +391,8 @@ already running — eldoc must never launch a process."
 (define-key rackton-mode-map (kbd "C-c C-d") #'rackton-describe-symbol)
 (define-key rackton-mode-map (kbd "C-c C-s") #'rackton-show-source)
 (define-key rackton-mode-map (kbd "C-c C-a") #'rackton-accepts)
+(define-key rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
+(define-key inferior-rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
 
 (provide 'rackton-repl)
 ;;; rackton-repl.el ends here

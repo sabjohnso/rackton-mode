@@ -265,6 +265,42 @@
       (goto-char (point-min))
       (should (search-forward "append" nil t)))))
 
+(ert-deftest rackton-repl-clear-buffer-erases-output-keeps-session ()
+  (rackton-test--ensure-repl)
+  ;; A definition and some output to clear away.
+  (rackton-repl-query "(define (clr-probe x) x)")
+  (rackton-repl--send-form "(* 3 4)")
+  (should (rackton-test--wait-for
+           (lambda () (rackton-test--repl-contains-p "12 :: Integer"))
+           15))
+  (rackton-repl-clear-buffer)
+  ;; The output is gone...
+  (should-not (rackton-test--repl-contains-p "12 :: Integer"))
+  ;; ...but the process is alive and the buffer still ends at a prompt...
+  (should (process-live-p (rackton-repl--process)))
+  (with-current-buffer (rackton-repl--buffer)
+    (save-excursion
+      (goto-char (point-max))
+      (forward-line 0)
+      (should (looking-at rackton-repl-prompt-regexp))))
+  ;; ...and the session survived: the earlier definition is still bound.
+  (should (string-match-p "::" (rackton-repl-query ",type clr-probe"))))
+
+(ert-deftest rackton-repl-clear-buffer-works-from-other-buffer ()
+  (rackton-test--ensure-repl)
+  (rackton-repl--send-form "(* 9 9)")
+  (should (rackton-test--wait-for
+           (lambda () (rackton-test--repl-contains-p "81 :: Integer"))
+           15))
+  (with-temp-buffer                     ; not the REPL buffer
+    (rackton-mode)
+    (rackton-repl-clear-buffer))
+  (should-not (rackton-test--repl-contains-p "81 :: Integer")))
+
+(ert-deftest rackton-repl-clear-buffer-errors-without-repl ()
+  (cl-letf (((symbol-function 'rackton-repl--buffer) (lambda () nil)))
+    (should-error (rackton-repl-clear-buffer) :type 'user-error)))
+
 ;;; Integration: eldoc
 
 (ert-deftest rackton-repl-eldoc-reports-type-of-symbol-at-point ()
