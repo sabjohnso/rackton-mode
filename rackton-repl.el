@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.4
+;; Version: 0.4.5
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -70,6 +70,10 @@
   ;; form with a "..> " prompt; in a comint buffer they are noise.
   (add-hook 'comint-preoutput-filter-functions
             #'rackton-repl--strip-continuations nil t)
+  ;; Separate interactions with a blank line before each prompt.  Runs
+  ;; after stripping (APPEND), so continuation prompts are already gone.
+  (add-hook 'comint-preoutput-filter-functions
+            #'rackton-repl--blank-before-prompts t t)
   (font-lock-add-keywords nil rackton-font-lock-keywords))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
@@ -80,6 +84,12 @@
 (defun rackton-repl--strip-continuations (output)
   "Remove the REPL's ..> continuation prompts from OUTPUT."
   (replace-regexp-in-string rackton-repl--continuation-regexp "" output))
+
+(defun rackton-repl--blank-before-prompts (output)
+  "Prepend a newline to each line-starting prompt in OUTPUT.
+The preceding output already ends a line, so the inserted newline
+shows as a blank line, visually separating successive interactions."
+  (replace-regexp-in-string rackton-repl-prompt-regexp "\n\\&" output))
 
 (defun rackton-repl--input-complete-p (input)
   "Non-nil when INPUT has no unclosed parenthesis or string."

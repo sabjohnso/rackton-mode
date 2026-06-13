@@ -77,6 +77,17 @@
                  "sqr :: t\n"))
   (should (equal (rackton-repl--strip-continuations "plain\n") "plain\n")))
 
+(ert-deftest rackton-repl-blank-line-precedes-each-prompt ()
+  ;; A prompt at a line start gains a blank line before it.
+  (should (equal (rackton-repl--blank-before-prompts "42 :: Integer\nλ> ")
+                 "42 :: Integer\n\nλ> "))
+  ;; A chunk that is only a prompt gains a leading newline (a blank
+  ;; line, since the buffer before it already ends in one).
+  (should (equal (rackton-repl--blank-before-prompts "λ> ") "\nλ> "))
+  ;; Output with no prompt is untouched.
+  (should (equal (rackton-repl--blank-before-prompts "no prompt\n")
+                 "no prompt\n")))
+
 (ert-deftest rackton-repl-input-complete-p-checks-balance ()
   (should (rackton-repl--input-complete-p "(sqr 2)"))
   (should (rackton-repl--input-complete-p "42"))
@@ -174,6 +185,20 @@
            (lambda () (rackton-test--repl-contains-p "tenth ::"))
            15))
   (should-not (rackton-test--repl-contains-p "..>")))
+
+(ert-deftest rackton-repl-prompt-is-preceded-by-blank-line ()
+  (rackton-test--ensure-repl)
+  (rackton-repl--send-form "(+ 20 3)")
+  (should (rackton-test--wait-for
+           (lambda () (rackton-test--repl-contains-p "23 :: Integer"))
+           15))
+  (with-current-buffer (rackton-repl--buffer)
+    (save-excursion
+      (goto-char (point-max))
+      (forward-line 0)                  ; start of the latest prompt line
+      (should (looking-at rackton-repl-prompt-regexp))
+      (forward-line -1)
+      (should (looking-at "^[ \t]*$")))))
 
 ;;; Integration: query channel
 
