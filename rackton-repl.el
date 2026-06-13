@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.2
+;; Version: 0.4.3
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 

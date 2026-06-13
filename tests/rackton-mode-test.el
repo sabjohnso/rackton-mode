@@ -163,6 +163,24 @@
            "(define (from-maybe d m) d)"
            "from-maybe" 'font-lock-function-name-face)))
 
+(ert-deftest rackton-mode-fontifies-lambda-aliases-and-monadic-lets ()
+  (should (rackton-test--has-face-p
+           "(λ (x) (* x x))" "λ" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(case-λ [(x) x])" "case-λ" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(let& ([a ma]) a)" "let&" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(let% ([a ma]) a)" "let%" 'font-lock-keyword-face)))
+
+(ert-deftest rackton-mode-indents-lambda-alias-and-monadic-lets ()
+  (rackton-test--indents-to "(λ (x)\n  (* x x))")
+  (rackton-test--indents-to
+   "(let& ([a ma]\n       [b mb])\n  (pure (+ a b)))")
+  ;; let% has a named (loop) variant, indented like named let
+  (rackton-test--indents-to
+   "(let% loop ([a ma])\n  body)"))
+
 (ert-deftest rackton-mode-fontifies-module-forms ()
   (let ((code (concat "(require rackton/data/list (only-in m f))\n"
                       "(provide (all-defined-out)\n"

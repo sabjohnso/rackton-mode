@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.2
+;; Version: 0.4.3
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -50,8 +50,8 @@
   "Forms that introduce definitions at the top of a Rackton module.")
 
 (defconst rackton-expression-forms
-  '("match" "match-let" "do" "let" "let*" "let+" "letrec"
-    "lambda" "case-lambda" "cond" "if" "ann" "delay"
+  '("match" "match-let" "do" "let" "let*" "let+" "let&" "let%" "letrec"
+    "lambda" "λ" "case-lambda" "case-λ" "cond" "if" "ann" "delay"
     "handle" "escape" "proc" "rec" "feed" "update" "via" "racket")
   "Forms that head Rackton expressions.")
 
@@ -229,6 +229,9 @@ found, as a font-lock matcher must."
     (update    . 1)
     (proc      . 1)
     (let+      . 1)
+    (let&      . 1)
+    (let%      . scheme-let-indent)     ; has a named variant, like let
+    (λ         . 1)
     (describe  . 1)                     ; rackton/unit: (describe "name" test ...)
     (cond      . 0)
     (racket    . 2)                     ; (racket type (var ...) body ...)
