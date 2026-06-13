@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.5
+;; Version: 0.4.6
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -100,14 +100,28 @@ shows as a blank line, visually separating successive interactions."
       (and (<= (car state) 0)          ; no unclosed parens
            (not (nth 3 state))))))     ; not inside a string
 
+(defun rackton-repl--inside-sexp-p ()
+  "Non-nil when point sits inside an open s-expression of the input.
+Parses only the input region (from the process mark) so earlier
+output in the buffer cannot skew the paren depth."
+  (let* ((proc (get-buffer-process (current-buffer)))
+         (start (and proc (marker-position (process-mark proc)))))
+    (and start
+         (>= (point) start)
+         (> (car (parse-partial-sexp start (point))) 0))))
+
 (defun rackton-repl-return ()
-  "Send the input when it is complete; otherwise open an indented line."
+  "Send the input, or open an indented line.
+Submit only when the whole input is complete and point is not inside
+an s-expression; otherwise open a new line so the form keeps growing."
   (interactive)
   (let* ((proc (get-buffer-process (current-buffer)))
          (input (and proc
                      (buffer-substring-no-properties
                       (process-mark proc) (point-max)))))
-    (if (and input (rackton-repl--input-complete-p input))
+    (if (and input
+             (rackton-repl--input-complete-p input)
+             (not (rackton-repl--inside-sexp-p)))
         (comint-send-input)
       (newline-and-indent))))
 

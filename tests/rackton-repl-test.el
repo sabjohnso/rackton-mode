@@ -178,6 +178,26 @@
         ;; Clean the half-typed input up for the tests that follow.
         (delete-region input-start (point-max))))))
 
+(ert-deftest rackton-repl-return-inside-complete-sexp-opens-line ()
+  ;; A balanced form, but point sits inside it: enter must open a line,
+  ;; not submit.
+  (rackton-test--ensure-repl)
+  (with-current-buffer (rackton-repl--buffer)
+    (goto-char (point-max))
+    (let ((input-start (process-mark (rackton-repl--process))))
+      (unwind-protect
+          (progn
+            (insert "(+ 1 2)")
+            (backward-char 1)           ; point inside the form, before ")"
+            (rackton-repl-return)
+            (let ((region (buffer-substring-no-properties
+                           input-start (point-max))))
+              ;; Not submitted: the form is still being edited...
+              (should (string-prefix-p "(+ 1 2" region))
+              ;; ...with a freshly opened line inside it.
+              (should (string-match-p "\n" region))))
+        (delete-region input-start (point-max))))))
+
 (ert-deftest rackton-repl-multiline-send-shows-no-continuation-prompts ()
   (rackton-test--ensure-repl)
   (rackton-repl--send-form "(define (tenth x)\n  (* 10 x))")
