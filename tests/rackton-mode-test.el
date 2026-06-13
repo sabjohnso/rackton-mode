@@ -269,5 +269,66 @@
   (rackton-test--indents-to "(let ((x 1))\n  x)")
   (rackton-test--indents-to "(println (mappend a\n                  b))"))
 
+;;; imenu
+
+(defmacro rackton-test--with-imenu (code &rest body)
+  "Build the imenu index for CODE in `rackton-mode'; eval BODY with it.
+INDEX is bound to the index alist; point may be moved freely."
+  (declare (indent 1))
+  `(with-temp-buffer
+     (insert ,code)
+     (rackton-mode)
+     (let ((index (funcall imenu-create-index-function)))
+       ,@body)))
+
+(ert-deftest rackton-mode-imenu-lists-functions-flat ()
+  (rackton-test--with-imenu "(define (foo x) x)\n(define bar 1)\n"
+    (should (assoc "foo" index))
+    (should (assoc "bar" index))
+    (goto-char (cdr (assoc "foo" index)))
+    (should (looking-at "(define (foo"))
+    (goto-char (cdr (assoc "bar" index)))
+    (should (looking-at "(define bar"))))
+
+(ert-deftest rackton-mode-imenu-groups-types ()
+  (rackton-test--with-imenu
+      (concat "(data (Maybe a) None (Some a))\n"
+              "(struct Point [x : Integer])\n"
+              "(newtype Age Integer)\n"
+              "(define-alias (Endo a) (-> a a))\n"
+              "(define-effect Counter)\n")
+    (let ((types (cdr (assoc "Types" index))))
+      (should (assoc "Maybe" types))
+      (should (assoc "Point" types))
+      (should (assoc "Age" types))
+      (should (assoc "Endo" types))
+      (should (assoc "Counter" types)))))
+
+(ert-deftest rackton-mode-imenu-groups-classes ()
+  (rackton-test--with-imenu
+      (concat "(class (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))\n"
+              "(protocol (Stack (s => Eq))\n  (: push (-> a (s a) (s a))))\n")
+    (let ((classes (cdr (assoc "Classes" index))))
+      (should (assoc "Functor" classes))
+      (should (assoc "Stack" classes)))))
+
+(ert-deftest rackton-mode-imenu-labels-instances-by-head ()
+  (rackton-test--with-imenu
+      (concat "(instance (Functor Box)\n  (define (fmap f b) b))\n"
+              "(instance (Eq (Maybe a))\n  (define (== x y) #t))\n")
+    (let ((instances (cdr (assoc "Instances" index))))
+      ;; the whole instance head is the label, nested types included
+      (should (assoc "Functor Box" instances))
+      (should (assoc "Eq (Maybe a)" instances)))))
+
+(ert-deftest rackton-mode-imenu-skips-nested-and-signatures ()
+  (rackton-test--with-imenu
+      "(: foo (-> Integer Integer))\n(define (foo x)\n  (define helper 1)\n  x)\n"
+    (should (assoc "foo" index))         ; the top-level define
+    (should-not (assoc "helper" index))  ; nested define is not indexed
+    ;; the (: ...) signature adds no second "foo" entry
+    (should (= 1 (length (seq-filter (lambda (e) (equal (car e) "foo"))
+                                     index))))))
+
 (provide 'rackton-mode-test)
 ;;; rackton-mode-test.el ends here

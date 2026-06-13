@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.8
+;; Version: 0.4.9
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -26,6 +26,7 @@
 ;;; Code:
 
 (require 'scheme)
+(require 'imenu)
 
 (defgroup rackton nil
   "Editing Rackton code."
@@ -303,6 +304,84 @@ INDENT-POINT and STATE are as for `lisp-indent-function'."
            (lisp-indent-specform spec state indent-point normal-indent))
           (t (scheme-indent-function indent-point state)))))
 
+;;; imenu
+;;
+;; A definition index for navigation: `define' bindings sit flat at the
+;; top, and the type-, class-, and instance-introducing forms group
+;; into submenus.  The forms are walked with the same element-position
+;; helpers the font-lock classifier uses, so a name with nested types
+;; (an `instance' head like (Eq (Maybe a))) is read correctly rather
+;; than truncated by a paren-blind regexp.
+
+(defconst rackton--imenu-type-heads
+  '(data struct newtype define-alias define-effect)
+  "Definition forms grouped under the imenu \"Types\" submenu.")
+
+(defconst rackton--imenu-class-heads '(class protocol)
+  "Definition forms grouped under the imenu \"Classes\" submenu.")
+
+(defun rackton--imenu-form-name (open)
+  "The name the form at OPEN binds, as a string, or nil.
+The name is the first symbol of element 1, so both (define (f x) …)
+and (define f …) — and the parenthesised heads of `data', `class',
+etc. — resolve to the same place.  Read as buffer text rather than
+interned: definition names are arbitrary identifiers, most of which
+are not symbols in the obarray, so `intern-soft' would miss them."
+  (let ((e1 (rackton--element-start open 1)))
+    (when e1
+      (save-excursion
+        (goto-char (if (eq (char-after e1) ?\() (1+ e1) e1))
+        (when (looking-at "\\(?:\\sw\\|\\s_\\)+")
+          (match-string-no-properties 0))))))
+
+(defun rackton--imenu-instance-label (open)
+  "Label for the `instance' form at OPEN — its head with parens trimmed.
+For example (instance (Eq (Maybe a)) …) yields \"Eq (Maybe a)\"."
+  (let ((e1 (rackton--element-start open 1)))
+    (when e1
+      (save-excursion
+        (goto-char e1)
+        (let* ((end (progn (forward-sexp 1) (point)))
+               (text (buffer-substring-no-properties e1 end)))
+          (string-trim
+           (replace-regexp-in-string
+            "[ \t\n]+" " "
+            (replace-regexp-in-string "\\`(\\|)\\'" "" text))))))))
+
+(defun rackton--imenu-create-index ()
+  "Build an imenu index of the buffer's Rackton definitions.
+Top-level `define's appear flat; types, classes, and instances are
+grouped into submenus.  Only forms beginning at column zero are
+indexed, so nested definitions are left out."
+  (let ((functions '()) (types '()) (classes '()) (instances '()))
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward "^(" nil t)
+        (let ((open (match-beginning 0)))
+          ;; `syntax-ppss' and the element helpers move point; without
+          ;; this `save-excursion' the next search would rematch the
+          ;; same paren and the loop would never advance.
+          (save-excursion
+            (unless (nth 8 (syntax-ppss open))   ; not in a string or comment
+              (let ((head (rackton--symbol-at (1+ open))))
+                (cond
+                 ((eq head 'define)
+                  (when-let ((name (rackton--imenu-form-name open)))
+                    (push (cons name open) functions)))
+                 ((memq head rackton--imenu-type-heads)
+                  (when-let ((name (rackton--imenu-form-name open)))
+                    (push (cons name open) types)))
+                 ((memq head rackton--imenu-class-heads)
+                  (when-let ((name (rackton--imenu-form-name open)))
+                    (push (cons name open) classes)))
+                 ((eq head 'instance)
+                  (when-let ((label (rackton--imenu-instance-label open)))
+                    (push (cons label open) instances))))))))))
+    (append (nreverse functions)
+            (when types     (list (cons "Types" (nreverse types))))
+            (when classes   (list (cons "Classes" (nreverse classes))))
+            (when instances (list (cons "Instances" (nreverse instances)))))))
+
 ;;; Mode
 
 ;;;###autoload
@@ -314,6 +393,7 @@ Racket.  See the rackton repository's documentation for the
 language itself."
   (setq-local lisp-indent-function #'rackton--indent-function)
   (setq-local indent-tabs-mode nil)
+  (setq-local imenu-create-index-function #'rackton--imenu-create-index)
   ;; Rackton, like Racket, is case-sensitive; scheme-mode's
   ;; font-lock-defaults set CASE-FOLD to t, which would make the
   ;; capitalized-name rule match every identifier.
