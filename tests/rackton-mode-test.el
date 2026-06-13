@@ -150,6 +150,31 @@
     (should (rackton-test--has-face-p code "Some" 'rackton-constructor-face))
     (should (rackton-test--has-face-p code "Maybe" 'font-lock-type-face))))
 
+(ert-deftest rackton-mode-fontifies-racket-keywords ()
+  (should (rackton-test--has-face-p
+           "(struct P [x : Integer] #:deriving Eq)"
+           "#:deriving" 'font-lock-builtin-face))
+  (should (rackton-test--has-face-p
+           "(protocol (C w)\n  #:derive\n  ((Semigroup (define (mappend a b) a))))"
+           "#:derive" 'font-lock-builtin-face)))
+
+(ert-deftest rackton-mode-classifies-protocol-keyword-blocks ()
+  (let ((code (concat "(protocol (Stack (s => Eq))\n"
+                      "  (: push (-> a (s a) (s a)))\n"
+                      "  #:requires (Show s)\n"
+                      "  #:derive\n"
+                      "  ((Semigroup\n"
+                      "    (define (mappend a b) (Combine a b)))))")))
+    ;; superclass bound in the head
+    (should (rackton-test--has-face-p code "Eq" 'font-lock-type-face))
+    ;; constraint after #:requires
+    (should (rackton-test--has-face-p code "Show" 'font-lock-type-face))
+    ;; the superclass a derivation clause names
+    (should (rackton-test--has-face-p code "Semigroup" 'font-lock-type-face))
+    ;; ...but its method bodies are ordinary expressions
+    (should (rackton-test--has-face-p code "Combine"
+                                      'rackton-constructor-face))))
+
 (ert-deftest rackton-mode-fontifies-export-spec-names-as-types ()
   (let ((code "(provide (data-out Maybe) (struct-out Point))"))
     (should (rackton-test--has-face-p code "Maybe" 'font-lock-type-face))

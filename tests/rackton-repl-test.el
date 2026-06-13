@@ -98,7 +98,15 @@
                 'font-lock-function-name-face))
     (search-forward "Some")
     (should (eq (get-text-property (match-beginning 0) 'face)
-                'rackton-constructor-face))))
+                'rackton-constructor-face))
+    ;; Racket keywords must highlight here too, not only in source
+    ;; buffers (where scheme-mode's own rule covers them).
+    (insert "\nλ> (struct P [x : Integer] #:deriving Eq)")
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "#:deriving")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-builtin-face))))
 
 (ert-deftest rackton-repl-submitted-input-keeps-fontification ()
   (rackton-test--ensure-repl)

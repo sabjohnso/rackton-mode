@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.3
+;; Version: 0.4.4
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -117,13 +117,20 @@ That shape is a GADT constructor clause or a struct field."
   (let ((second (rackton--element-start open 1)))
     (and second (eq (rackton--symbol-at second) ':))))
 
-(defun rackton--after-deriving-p (open child)
-  "Non-nil when CHILD follows #:deriving directly inside the form at OPEN."
+(defun rackton--governing-keyword (open child)
+  "The #:keyword governing CHILD inside the form at OPEN, or nil.
+That is the nearest Racket keyword before CHILD at CHILD's own
+nesting level, returned as a string."
   (save-excursion
-    (goto-char child)
-    (and (re-search-backward "#:deriving\\_>" (1+ open) t)
-         (= (car (syntax-ppss))
-            (1+ (car (syntax-ppss open)))))))
+    ;; Depth first: `syntax-ppss' moves point.
+    (let ((depth (1+ (car (syntax-ppss open))))
+          (found nil))
+      (goto-char child)
+      (while (and (not found)
+                  (re-search-backward "#:\\(?:\\sw\\|\\s_\\)+" (1+ open) t))
+        (when (= (car (syntax-ppss)) depth)
+          (setq found (match-string-no-properties 0))))
+      found)))
 
 (defun rackton--type-position-p (pos)
   "Non-nil when the capitalized name at POS occupies a type position.
@@ -131,7 +138,8 @@ Walks the enclosing forms from the inside out; the first form that
 determines type-ness or constructor-ness wins, and a name with no
 deciding context is a constructor."
   (let ((opens (reverse (nth 9 (syntax-ppss pos)))) ; innermost first
-        (child pos)
+        (child pos)        ; the element of the current form containing POS
+        (inner pos)        ; the element one nesting level deeper than CHILD
         (decided nil))
     (while (and opens (not decided))
       (let* ((open (car opens))
@@ -148,10 +156,23 @@ deciding context is a constructor."
          ((and (memq head rackton--typed-head-forms)
                (eq child (rackton--element-start open 1)))
           (setq decided 'type))
+         ;; class/protocol keyword blocks: #:requires names constraints;
+         ;; #:derive takes (SuperClass (define ...) ...) clauses whose
+         ;; head names a superclass while the defines are expressions.
+         ((memq head '(class protocol))
+          (let ((governing (rackton--governing-keyword open child)))
+            (cond ((equal governing "#:requires")
+                   (setq decided 'type))
+                  ((and (equal governing "#:derive")
+                        (or (eq inner pos)
+                            (eq pos (rackton--element-start inner 0))))
+                   (setq decided 'type)))))
          ;; the rest of a data/struct/newtype body
          ((memq head rackton--data-forms)
           (setq decided
-                (cond ((rackton--after-deriving-p open child) 'type)
+                (cond ((equal (rackton--governing-keyword open child)
+                              "#:deriving")
+                       'type)
                       ;; a bare nullary constructor, e.g. None
                       ((eq child pos) 'constructor)
                       ;; the head of a constructor clause, e.g. (Some a)
@@ -162,7 +183,8 @@ deciding context is a constructor."
          ((and (eq head 'ann)
                (not (eq child (rackton--element-start open 1))))
           (setq decided 'type)))
-        (setq child open
+        (setq inner child
+              child open
               opens (cdr opens))))
     (eq decided 'type)))
 
@@ -205,6 +227,10 @@ found, as a font-lock matcher must."
     ;; (the REPL) highlight it too.
     ("(define[ \t\n]+(?\\(\\(?:\\sw\\|\\s_\\)+\\)"
      (1 font-lock-function-name-face))
+    ;; Racket keywords (#:deriving, #:derive, #:from, ...).  Stated
+    ;; here rather than inherited from scheme-mode's keywords so
+    ;; buffers that only add these keywords (the REPL) highlight them.
+    ("#:\\(?:\\sw\\|\\s_\\)+" . font-lock-builtin-face)
     (rackton--match-type-name . font-lock-type-face)
     (rackton--match-constructor . 'rackton-constructor-face))
   "Font-lock rules layered on top of those inherited from scheme-mode.")
