@@ -119,6 +119,34 @@
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'font-lock-builtin-face))))
 
+(ert-deftest rackton-repl-output-is-not-fontified-as-code ()
+  "Process output is prose, not Rackton code, so the language's
+keywords must not fontify it; input on the same buffer still must."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    ;; A ,info reply as the process prints it: comint tags output with
+    ;; the `field' property `output'.
+    (insert (propertize "Contravariant (class)\n    contramap :: (All t a b)"
+                        'field 'output))
+    ;; An input form the user typed (field nil, as comint leaves input).
+    (insert "\n(define (eff x) (Some x))")
+    (font-lock-ensure)
+    ;; The output words must carry no code faces.
+    (goto-char (point-min))
+    (search-forward "Contravariant")
+    (should-not (get-text-property (match-beginning 0) 'face))
+    (search-forward "class")
+    (should-not (get-text-property (match-beginning 0) 'face))
+    (search-forward "All")
+    (should-not (get-text-property (match-beginning 0) 'face))
+    ;; The input form is still highlighted as before.
+    (search-forward "define")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-keyword-face))
+    (search-forward "Some")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-constructor-face))))
+
 (ert-deftest rackton-repl-submitted-input-keeps-fontification ()
   (rackton-test--ensure-repl)
   (with-current-buffer (rackton-repl--buffer)

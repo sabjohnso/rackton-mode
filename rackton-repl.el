@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.9
+;; Version: 0.4.10
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -52,6 +52,20 @@
 
 ;;; Layer 1: transport
 
+(defun rackton-repl--input-only (matcher)
+  "Wrap font-lock MATCHER to fire on REPL input only, never process output.
+MATCHER is a regexp string or a matcher function, as in
+`rackton-font-lock-keywords'.  The returned matcher behaves like
+MATCHER but skips any match landing on text comint tagged with the
+`field' property `output'."
+  (lambda (limit)
+    (let (hit)
+      (while (and (setq hit (if (functionp matcher)
+                                (funcall matcher limit)
+                              (re-search-forward matcher limit t)))
+                  (eq (get-text-property (match-beginning 0) 'field) 'output)))
+      hit)))
+
 (define-derived-mode inferior-rackton-mode comint-mode "Inferior Rackton"
   "Major mode for the inferior Rackton REPL.
 
@@ -74,7 +88,17 @@
   ;; after stripping (APPEND), so continuation prompts are already gone.
   (add-hook 'comint-preoutput-filter-functions
             #'rackton-repl--blank-before-prompts t t)
-  (font-lock-add-keywords nil rackton-font-lock-keywords))
+  ;; The language's keywords describe Rackton source, so they must fire
+  ;; only on what the user types.  Process output — the banner and the
+  ;; ,info/,type/,source replies — is prose; fontifying it as code
+  ;; produces nonsense (a reply's "(class)" read as a keyword, a type
+  ;; name in a signature read as a constructor).  Comint already tags
+  ;; output with the `field' property `output', so the wrapped matchers
+  ;; can skip it.
+  (font-lock-add-keywords
+   nil (mapcar (lambda (kw)
+                 (cons (rackton-repl--input-only (car kw)) (cdr kw)))
+               rackton-font-lock-keywords)))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
 
