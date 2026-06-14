@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.9
+;; Version: 0.4.11
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -32,6 +32,13 @@
   "Editing Rackton code."
   :group 'languages
   :prefix "rackton-")
+
+(defcustom rackton-program "racket"
+  "Program that hosts Rackton.
+Used to launch the REPL, the LSP/debug servers, and the signature
+search tool, each via a `-l rackton/...' module argument."
+  :type 'string
+  :group 'rackton)
 
 (defface rackton-constructor-face
   '((t :inherit font-lock-constant-face))

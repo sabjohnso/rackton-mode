@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.10
+;; Version: 0.4.11
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -34,11 +34,10 @@
 (require 'rackton-mode)
 
 ;;; Customization
-
-(defcustom rackton-program "racket"
-  "Program that hosts the Rackton REPL."
-  :type 'string
-  :group 'rackton)
+;;
+;; `rackton-program' (the Racket binary) lives in `rackton-mode', the
+;; shared base every tool launches through; only the REPL's own
+;; arguments are stated here.
 
 (defcustom rackton-repl-arguments '("-l" "rackton/repl")
   "Arguments passed to `rackton-program' to boot the REPL."
@@ -403,8 +402,11 @@ are gone."
 (defun rackton-repl-eldoc (callback &rest _)
   "Report the type of the symbol at point via CALLBACK.
 For `eldoc-documentation-functions'.  Quiet unless the REPL is
-already running — eldoc must never launch a process."
-  (when (rackton-repl--live-p)
+already running — eldoc must never launch a process — and quiet when
+eglot manages the buffer, so the LSP server's hover is then the single
+source of type-at-point (and no REPL is needed for it)."
+  (when (and (rackton-repl--live-p)
+             (not (and (fboundp 'eglot-managed-p) (eglot-managed-p))))
     (when-let ((name (thing-at-point 'symbol t)))
       (unless (nth 8 (syntax-ppss))     ; strings and comments stay quiet
         (let ((doc (or (gethash name rackton-repl--type-cache)

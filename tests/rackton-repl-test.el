@@ -11,6 +11,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'rackton-repl)
 
 ;;; Helpers
@@ -161,6 +162,36 @@ keywords must not fontify it; input on the same buffer still must."
       ;; ...nor stamp it with comint's input face, which shadows the
       ;; `face' property wherever font-lock is live.
       (should-not (get-text-property pos 'font-lock-face)))))
+
+(ert-deftest rackton-repl-eldoc-defers-to-eglot ()
+  "With eglot managing the buffer, the REPL eldoc stays silent so the
+LSP server's hover is the single source of type-at-point."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'eglot-managed-p) (lambda () t))
+            ;; A type the REPL *would* report, so only the eglot guard
+            ;; can keep the callback from firing.
+            ((symbol-function 'rackton-repl--type-of) (lambda (_) "map :: whatever")))
+    (with-temp-buffer
+      (clrhash rackton-repl--type-cache)
+      (insert "map")
+      (goto-char (point-min))
+      (let (called)
+        (rackton-repl-eldoc (lambda (&rest _) (setq called t)))
+        (should-not called)))))
+
+(ert-deftest rackton-repl-eldoc-reports-when-eglot-absent ()
+  "Without eglot, the REPL eldoc still reports the cached type."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'eglot-managed-p) (lambda () nil))
+            ((symbol-function 'rackton-repl--type-of)
+             (lambda (_) "map :: (All (a b) (-> (-> a b) (-> (List a) (List b))))")))
+    (with-temp-buffer
+      (clrhash rackton-repl--type-cache)
+      (insert "map")
+      (goto-char (point-min))
+      (let (doc)
+        (rackton-repl-eldoc (lambda (d &rest _) (setq doc d)))
+        (should (string-prefix-p "map ::" doc))))))
 
 ;;; Integration: transport
 
