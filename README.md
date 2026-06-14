@@ -95,6 +95,22 @@ Rackton's own analyzer: diagnostics via flymake, type hover via eldoc,
 completion via completion-at-point, go-to-definition via xref, and
 document symbols via imenu.
 
+### Completion
+
+`TAB` indents the line, then completes the symbol at point (the
+standard `tab-always-indent` set to `complete`; flip it back with the
+`rackton-tab-always-indent` option). Candidates come from whichever
+backend is live:
+
+- **eglot**, when connected — the LSP server's completion (file
+  definitions, imports, prelude, keywords).
+- **the REPL** otherwise, when one is running (`rackton-repl`) — the
+  session's own bindings plus keywords, via the REPL's `,complete`
+  command. This also drives `TAB` in the `*rackton-repl*` buffer.
+
+When eglot manages the buffer, the REPL backend steps aside (as the
+eldoc type display does), so LSP completion is authoritative.
+
 ### Debugging (dape)
 
 `require`-ing `rackton-dap` adds a `rackton` configuration to dape. `M-x

@@ -193,6 +193,65 @@ LSP server's hover is the single source of type-at-point."
         (rackton-repl-eldoc (lambda (d &rest _) (setq doc d)))
         (should (string-prefix-p "map ::" doc))))))
 
+;;; Completion
+
+(ert-deftest rackton-repl-completions-parses-reply ()
+  "The completion helper splits the ,complete reply into candidates."
+  (cl-letf (((symbol-function 'rackton-repl-query)
+             (lambda (&rest _) "match\nmax\n")))
+    (should (equal (rackton-repl--completions "ma") '("match" "max"))))
+  (cl-letf (((symbol-function 'rackton-repl-query) (lambda (&rest _) "")))
+    (should-not (rackton-repl--completions "zz"))))
+
+(ert-deftest rackton-repl-completion-at-point-returns-candidates ()
+  "The capf returns the symbol bounds and the REPL's candidates."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'eglot-managed-p) (lambda () nil))
+            ((symbol-function 'rackton-repl--completions)
+             (lambda (_) '("match" "max"))))
+    (with-temp-buffer
+      (insert "ma")
+      (let ((res (rackton-repl-completion-at-point)))
+        (should (= (nth 0 res) (point-min)))
+        (should (= (nth 1 res) (point-max)))
+        (should (equal (nth 2 res) '("match" "max")))
+        (should (eq (plist-get (nthcdr 3 res) :exclusive) 'no))))))
+
+(ert-deftest rackton-repl-completion-defers-to-eglot ()
+  "The capf yields nothing when eglot manages the buffer."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'eglot-managed-p) (lambda () t))
+            ((symbol-function 'rackton-repl--completions) (lambda (_) '("match"))))
+    (with-temp-buffer
+      (insert "ma")
+      (should-not (rackton-repl-completion-at-point)))))
+
+(ert-deftest rackton-repl-completion-quiet-without-repl ()
+  "The capf yields nothing when no REPL is running."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () nil)))
+    (with-temp-buffer
+      (insert "ma")
+      (should-not (rackton-repl-completion-at-point)))))
+
+(ert-deftest rackton-repl-mode-installs-completion ()
+  "The REPL buffer wires the capf and makes TAB complete."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (should (memq 'rackton-repl-completion-at-point completion-at-point-functions))
+    (should (eq tab-always-indent 'complete))))
+
+(ert-deftest rackton-mode-installs-source-completion ()
+  "A source buffer wires the REPL-backed capf and makes TAB complete."
+  (with-temp-buffer
+    (rackton-mode)
+    (should (eq tab-always-indent 'complete))
+    (should (memq 'rackton-repl-completion-at-point completion-at-point-functions))))
+
+(ert-deftest rackton-repl-complete-finds-prelude-name ()
+  "Integration: ,complete over the pipe returns a known prelude name."
+  (rackton-test--ensure-repl)
+  (should (member "match" (rackton-repl--completions "ma"))))
+
 ;;; Integration: transport
 
 (ert-deftest rackton-repl-starts-and-prompts ()

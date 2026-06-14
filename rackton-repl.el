@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.11
+;; Version: 0.4.16
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -79,6 +79,11 @@ MATCHER but skips any match landing on text comint tagged with the
   (setq-local indent-tabs-mode nil)
   (setq-local lisp-indent-function #'rackton--indent-function)
   (setq-local indent-line-function #'rackton-repl--indent-line)
+  ;; TAB indents, then completes the name at point (see
+  ;; `rackton-tab-always-indent'); the capf below answers the query.
+  (setq-local tab-always-indent rackton-tab-always-indent)
+  (add-hook 'completion-at-point-functions
+            #'rackton-repl-completion-at-point nil t)
   ;; The piped REPL answers every continuation line of a multi-line
   ;; form with a "..> " prompt; in a comint buffer they are noise.
   (add-hook 'comint-preoutput-filter-functions
@@ -420,6 +425,39 @@ source of type-at-point (and no REPL is needed for it)."
   (add-hook 'eldoc-documentation-functions #'rackton-repl-eldoc nil t))
 
 (add-hook 'rackton-mode-hook #'rackton-repl--eldoc-setup)
+
+;;; Layer 3: completion
+
+(defun rackton-repl--completions (prefix)
+  "Names completing PREFIX, from the REPL's ,complete command.
+Nil when the REPL offers none."
+  (let ((reply (rackton-repl-query (concat ",complete " prefix) 2)))
+    (and (not (string-empty-p reply))
+         (split-string reply "\n" t))))
+
+(defun rackton-repl-completion-at-point ()
+  "Completion-at-point for Rackton names, answered by the REPL.
+For `completion-at-point-functions', in both the REPL and source
+buffers.  Quiet unless the REPL is running — completion must never
+launch a process — and quiet when eglot manages the buffer, so its
+LSP completion takes over.  Non-exclusive: when it offers nothing,
+later functions (e.g. comint's filename completion) still run."
+  (when (and (rackton-repl--live-p)
+             (not (and (fboundp 'eglot-managed-p) (eglot-managed-p))))
+    (let ((bounds (bounds-of-thing-at-point 'symbol)))
+      (when bounds
+        (let ((cands (rackton-repl--completions
+                      (buffer-substring-no-properties (car bounds) (cdr bounds)))))
+          (when cands
+            (list (car bounds) (cdr bounds) cands :exclusive 'no)))))))
+
+(defun rackton-repl--completion-setup ()
+  "Hook `rackton-repl-completion-at-point' into the current buffer.
+Appended, so eglot's LSP completion (when present) is consulted first."
+  (add-hook 'completion-at-point-functions
+            #'rackton-repl-completion-at-point t t))
+
+(add-hook 'rackton-mode-hook #'rackton-repl--completion-setup)
 
 ;;; Keybindings layered onto the editing mode
 

@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.11
+;; Version: 0.4.16
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -38,6 +38,16 @@
 Used to launch the REPL, the LSP/debug servers, and the signature
 search tool, each via a `-l rackton/...' module argument."
   :type 'string
+  :group 'rackton)
+
+(defcustom rackton-tab-always-indent 'complete
+  "Value of `tab-always-indent' in Rackton buffers.
+The default makes TAB indent the line and then complete the symbol at
+point through the active completion-at-point backend (eglot's LSP
+completion when connected, otherwise the REPL's).  Set to t for the
+Lisp-traditional TAB that only ever indents."
+  :type '(choice (const :tag "Indent, then complete" complete)
+                 (const :tag "Indent only" t))
   :group 'rackton)
 
 (defface rackton-constructor-face
@@ -400,6 +410,7 @@ Racket.  See the rackton repository's documentation for the
 language itself."
   (setq-local lisp-indent-function #'rackton--indent-function)
   (setq-local indent-tabs-mode nil)
+  (setq-local tab-always-indent rackton-tab-always-indent)
   (setq-local imenu-create-index-function #'rackton--imenu-create-index)
   ;; Rackton, like Racket, is case-sensitive; scheme-mode's
   ;; font-lock-defaults set CASE-FOLD to t, which would make the
