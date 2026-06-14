@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.20
+;; Version: 0.4.21
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -193,12 +193,13 @@ and COL 0-based."
          (path (expand-file-name file)))
     (unless (file-exists-p path)
       (user-error "Cannot find error source: %s" path))
-    (let ((buf (find-file-noselect path)))
-      (with-current-buffer buf
-        (goto-char (point-min))
-        (forward-line (1- line))
-        (move-to-column col))
-      (pop-to-buffer buf))))
+    ;; Select the window first, then move point: a buffer already shown
+    ;; keeps its own window-point, which would override a point set
+    ;; before its window is selected.
+    (pop-to-buffer (find-file-noselect path))
+    (goto-char (point-min))
+    (forward-line (1- line))
+    (move-to-column col)))
 
 (defun rackton-repl-visit-error-at-mouse (event)
   "Visit the error location of the line clicked in EVENT.

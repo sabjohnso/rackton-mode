@@ -213,11 +213,37 @@ LSP server's hover is the single source of type-at-point."
   (let ((file (make-temp-file "rackton-err" nil ".rkt")))
     (with-temp-file file (insert "line one\nline two\nABCDEF\n"))
     (unwind-protect
-        (cl-letf (((symbol-function 'pop-to-buffer) #'ignore))
+        (save-window-excursion
           (rackton-repl--visit-error (list file 3 2))
-          (with-current-buffer (get-file-buffer file)
-            (should (= (line-number-at-pos) 3))
-            (should (= (current-column) 2))))
+          (should (equal (buffer-file-name) file))
+          (should (= (line-number-at-pos) 3))
+          (should (= (current-column) 2)))
+      (when (get-file-buffer file) (kill-buffer (get-file-buffer file)))
+      (delete-file file))))
+
+(ert-deftest rackton-repl-visit-error-moves-point-when-already-shown ()
+  "Point moves to the location even when the file is already displayed.
+Regression: a buffer shown in a window keeps its own window-point, so
+point must be set after the window is selected, not before."
+  (let ((file (make-temp-file "rackton-err" nil ".rkt")))
+    (with-temp-file file (insert "line one\nline two\nABCDEF\n"))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (let ((buf (find-file-noselect file))
+                (other (split-window)))
+            ;; Show the file in `other', point at the top, while a
+            ;; different window stays selected.
+            (set-window-buffer other buf)
+            (set-window-point other (point-min))
+            (with-current-buffer buf (goto-char (point-min)))
+            (should-not (eq (selected-window) other))
+            (rackton-repl--visit-error (list file 3 2))
+            (let ((win (get-buffer-window buf)))
+              (should win)
+              (should (= (with-current-buffer buf
+                           (line-number-at-pos (window-point win)))
+                         3)))))
       (when (get-file-buffer file) (kill-buffer (get-file-buffer file)))
       (delete-file file))))
 
