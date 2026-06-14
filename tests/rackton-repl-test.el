@@ -291,6 +291,72 @@ point must be set after the window is selected, not before."
           (rackton-repl-visit-error-at-mouse event)
           (should (equal visited '("foo.rkt" 31 0))))))))
 
+(ert-deftest rackton-repl-error-detail-line-p-recognizes-block ()
+  "Indented lines below an `error:' line are detail; the head is not."
+  (with-temp-buffer
+    (insert "error: foo.rkt:1:0: bad\n  expected: (Kleisli a)\n  in: (x)\n")
+    (goto-char (point-min))
+    (should-not (rackton-repl--error-detail-line-p (point))) ; the error: line
+    (forward-line 1)
+    (should (rackton-repl--error-detail-line-p (point)))     ; expected:
+    (forward-line 1)
+    (should (rackton-repl--error-detail-line-p (point))))    ; in:
+  ;; An indented line not under an error (a ,info reply) is not detail.
+  (with-temp-buffer
+    (insert "Contravariant (class)\n  methods:\n")
+    (goto-char (point-min))
+    (forward-line 1)
+    (should-not (rackton-repl--error-detail-line-p (point)))))
+
+(ert-deftest rackton-repl-error-detail-is-fontified-as-code ()
+  "The types and form after the first error line get Rackton faces."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "error: foo.rkt:1:0: infer: bad\n"
+                     "  expected: (-> (Kleisli a) Boolean)\n"
+                     "  in: (instance (Category (Kleisli m))"
+                     " (define (comp x) (Kleisli x)))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "Kleisli")            ; type position in `expected:'
+    (should (eq (get-text-property (match-beginning 0) 'face) 'font-lock-type-face))
+    (search-forward "instance")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'font-lock-keyword-face))
+    (search-forward "Category")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'font-lock-type-face))
+    (goto-char (point-min))
+    (search-forward "(Kleisli x)")        ; constructor position in `in:'
+    (goto-char (match-beginning 0))
+    (search-forward "Kleisli")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'rackton-constructor-face))))
+
+(ert-deftest rackton-repl-error-labels-are-fontified ()
+  "The expected:/got:/in: labels get the error-label face."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize "error: foo.rkt:1:0: bad\n  expected: (Maybe a)\n"
+                        'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "expected:")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-repl-error-label-face))))
+
+(ert-deftest rackton-repl-noninerror-output-stays-plain ()
+  "Indented non-error output (a ,info reply) is still not fontified."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "Contravariant (class)\n  methods:\n"
+                     "    contramap :: (-> (Predicate a))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "Predicate")
+    (should-not (get-text-property (match-beginning 0) 'face))))
+
 ;;; Completion
 
 (ert-deftest rackton-repl-completions-parses-reply ()

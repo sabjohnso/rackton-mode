@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.21
+;; Version: 0.4.22
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -54,6 +54,11 @@
   "Face for the first line of a Rackton REPL error."
   :group 'rackton)
 
+(defface rackton-repl-error-label-face
+  '((t :inherit bold))
+  "Face for the expected:/got:/in: labels in a Rackton REPL error."
+  :group 'rackton)
+
 (defconst rackton-repl--error-line-regexp
   "^error: \\([^:\n]+\\):\\([0-9]+\\):\\([0-9]+\\):"
   "Match a Rackton error's leading FILE:LINE:COL on its first line.")
@@ -71,28 +76,56 @@
            'mouse-face 'highlight
            'keymap rackton-repl-error-map
            'help-echo "mouse-1, mouse-2, or RET: visit this error location")
-     t))
-  "Font-lock for the first line of a REPL error.
-Beyond the error face it adds a `mouse-face' and the
-`rackton-repl-error-map' keymap, so the line is clickable.  Errors are
-printed as process output, so — unlike the language's
-`rackton-font-lock-keywords' — these are installed unwrapped (not
-filtered by `rackton-repl--input-only').")
+     t)
+    ("^[ \t]+\\(expected:\\|got:\\|in:\\)" 1 'rackton-repl-error-label-face))
+  "Font-lock for a REPL error's first line and its detail labels.
+The first line gets the error face plus a `mouse-face' and the
+`rackton-repl-error-map' keymap (so it is clickable); the
+expected:/got:/in: labels get the label face.  Errors are process
+output, so — unlike the language's `rackton-font-lock-keywords' —
+these are installed unwrapped (not filtered by
+`rackton-repl--code-only'); the detail *code* between the labels is
+fontified by the language keywords, which `rackton-repl--code-at-p'
+lets through on error-detail lines.")
 
 ;;; Layer 1: transport
 
-(defun rackton-repl--input-only (matcher)
-  "Wrap font-lock MATCHER to fire on REPL input only, never process output.
+(defun rackton-repl--error-detail-line-p (pos)
+  "Non-nil when POS lies on an indented detail line of an error block.
+Detail lines follow the `error:' first line and are indented; they hold
+the expected/got types and the `in:' form, all Rackton code.  Found by
+climbing the indented lines above POS to their non-indented head and
+checking it is an `error:' line — so a ,info reply's indented lines,
+whose head is not an error, are excluded."
+  (save-excursion
+    (goto-char pos)
+    (forward-line 0)
+    (and (looking-at-p "[ \t]")
+         (progn
+           (while (and (looking-at-p "[ \t]") (not (bobp)))
+             (forward-line -1))
+           (looking-at-p "error:")))))
+
+(defun rackton-repl--code-at-p (pos)
+  "Non-nil when POS holds Rackton code the language keywords should fontify.
+True for user input (anything that is not process output) and for the
+indented detail lines of an error block, but not for other output —
+banners and ,info/,type replies, which are prose."
+  (or (not (eq (get-text-property pos 'field) 'output))
+      (rackton-repl--error-detail-line-p pos)))
+
+(defun rackton-repl--code-only (matcher)
+  "Wrap font-lock MATCHER to fire only where REPL text is Rackton code.
 MATCHER is a regexp string or a matcher function, as in
 `rackton-font-lock-keywords'.  The returned matcher behaves like
-MATCHER but skips any match landing on text comint tagged with the
-`field' property `output'."
+MATCHER but skips any match that is neither input nor error detail
+\(see `rackton-repl--code-at-p')."
   (lambda (limit)
     (let (hit)
       (while (and (setq hit (if (functionp matcher)
                                 (funcall matcher limit)
                               (re-search-forward matcher limit t)))
-                  (eq (get-text-property (match-beginning 0) 'field) 'output)))
+                  (not (rackton-repl--code-at-p (match-beginning 0)))))
       hit)))
 
 (define-derived-mode inferior-rackton-mode comint-mode "Inferior Rackton"
@@ -131,10 +164,10 @@ MATCHER but skips any match landing on text comint tagged with the
   ;; can skip it.
   (font-lock-add-keywords
    nil (mapcar (lambda (kw)
-                 (cons (rackton-repl--input-only (car kw)) (cdr kw)))
+                 (cons (rackton-repl--code-only (car kw)) (cdr kw)))
                rackton-font-lock-keywords))
-  ;; Error first lines are output, so they sidestep the input-only
-  ;; wrapping above and are highlighted wherever they appear.
+  ;; Error first lines and labels are output, so they sidestep the
+  ;; code-only wrapping above and are highlighted wherever they appear.
   (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)

@@ -88,7 +88,10 @@ When the REPL prints an error carrying a source location
 (`error: FILE:LINE:COL: …`), its first line is shown in the error face,
 and either `RET` with point on that line or a mouse click on it jumps to
 the location, the way `compilation-mode` does. The file is resolved
-against the REPL's working directory.
+against the REPL's working directory. The detail below the first line is
+syntax-highlighted as Rackton code — the `expected:` / `got:` types and
+the `in:` form get the usual type, constructor, and keyword faces, with
+the labels themselves emphasized.
 
 The REPL integration is layered — transport (comint), a query channel
 (`rackton-repl-query`), and UI commands — the seam through which the
