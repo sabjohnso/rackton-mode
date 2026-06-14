@@ -86,9 +86,9 @@ running REPL is needed for it.
 
 When the REPL prints an error carrying a source location
 (`error: FILE:LINE:COL: …`), its first line is shown in the error face,
-and pressing `RET` with point on that line jumps to the location, the
-way `compilation-mode` does. The file is resolved against the REPL's
-working directory.
+and either `RET` with point on that line or a mouse click on it jumps to
+the location, the way `compilation-mode` does. The file is resolved
+against the REPL's working directory.
 
 The REPL integration is layered — transport (comint), a query channel
 (`rackton-repl-query`), and UI commands — the seam through which the

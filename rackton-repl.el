@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.19
+;; Version: 0.4.20
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -58,10 +58,24 @@
   "^error: \\([^:\n]+\\):\\([0-9]+\\):\\([0-9]+\\):"
   "Match a Rackton error's leading FILE:LINE:COL on its first line.")
 
+(defvar rackton-repl-error-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-2] #'rackton-repl-visit-error-at-mouse)
+    (define-key map [mouse-1] #'rackton-repl-visit-error-at-mouse)
+    map)
+  "Keymap on a REPL error line: a click visits its source location.")
+
 (defconst rackton-repl--error-font-lock-keywords
-  '(("^error:.*$" 0 'rackton-repl-error-face t))
+  '(("^error:.*$" 0
+     (list 'face 'rackton-repl-error-face
+           'mouse-face 'highlight
+           'keymap rackton-repl-error-map
+           'help-echo "mouse-1, mouse-2, or RET: visit this error location")
+     t))
   "Font-lock for the first line of a REPL error.
-Errors are printed as process output, so — unlike the language's
+Beyond the error face it adds a `mouse-face' and the
+`rackton-repl-error-map' keymap, so the line is clickable.  Errors are
+printed as process output, so — unlike the language's
 `rackton-font-lock-keywords' — these are installed unwrapped (not
 filtered by `rackton-repl--input-only').")
 
@@ -185,6 +199,20 @@ and COL 0-based."
         (forward-line (1- line))
         (move-to-column col))
       (pop-to-buffer buf))))
+
+(defun rackton-repl-visit-error-at-mouse (event)
+  "Visit the error location of the line clicked in EVENT.
+Bound in `rackton-repl-error-map', so a click on a highlighted error
+line jumps to its source the way RET does."
+  (interactive "e")
+  (let ((posn (event-end event)))
+    (with-current-buffer (window-buffer (posn-window posn))
+      (save-excursion
+        (goto-char (posn-point posn))
+        (let ((err (rackton-repl--error-at-point)))
+          (if err
+              (rackton-repl--visit-error err)
+            (user-error "No Rackton error at click")))))))
 
 (defun rackton-repl-return ()
   "Visit an error, send the input, or open an indented line.

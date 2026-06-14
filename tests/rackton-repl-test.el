@@ -242,6 +242,29 @@ LSP server's hover is the single source of type-at-point."
         (rackton-repl-return)
         (should (equal visited '("foo.rkt" 31 0)))))))
 
+(ert-deftest rackton-repl-error-line-is-clickable ()
+  "The error line carries a mouse-face and the error keymap."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert "error: foo.rkt:31:0: infer: wrong type")
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (should (eq (get-text-property (point) 'mouse-face) 'highlight))
+    (should (eq (get-text-property (point) 'keymap) rackton-repl-error-map))))
+
+(ert-deftest rackton-repl-mouse-visits-error ()
+  "A click on an error line jumps to the source location."
+  (let (visited)
+    (cl-letf (((symbol-function 'rackton-repl--visit-error)
+               (lambda (loc) (setq visited loc))))
+      (with-temp-buffer
+        (inferior-rackton-mode)
+        (insert "error: foo.rkt:31:0: infer: wrong type")
+        (set-window-buffer (selected-window) (current-buffer))
+        (let ((event (list 'mouse-2 (list (selected-window) (point-min)))))
+          (rackton-repl-visit-error-at-mouse event)
+          (should (equal visited '("foo.rkt" 31 0))))))))
+
 ;;; Completion
 
 (ert-deftest rackton-repl-completions-parses-reply ()
