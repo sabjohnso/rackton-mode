@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.18
+;; Version: 0.4.19
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -48,6 +48,22 @@
   "Regexp matching the Rackton REPL prompt.")
 
 (defconst rackton-repl--buffer-name "*rackton-repl*")
+
+(defface rackton-repl-error-face
+  '((t :inherit error))
+  "Face for the first line of a Rackton REPL error."
+  :group 'rackton)
+
+(defconst rackton-repl--error-line-regexp
+  "^error: \\([^:\n]+\\):\\([0-9]+\\):\\([0-9]+\\):"
+  "Match a Rackton error's leading FILE:LINE:COL on its first line.")
+
+(defconst rackton-repl--error-font-lock-keywords
+  '(("^error:.*$" 0 'rackton-repl-error-face t))
+  "Font-lock for the first line of a REPL error.
+Errors are printed as process output, so — unlike the language's
+`rackton-font-lock-keywords' — these are installed unwrapped (not
+filtered by `rackton-repl--input-only').")
 
 ;;; Layer 1: transport
 
@@ -102,7 +118,10 @@ MATCHER but skips any match landing on text comint tagged with the
   (font-lock-add-keywords
    nil (mapcar (lambda (kw)
                  (cons (rackton-repl--input-only (car kw)) (cdr kw)))
-               rackton-font-lock-keywords)))
+               rackton-font-lock-keywords))
+  ;; Error first lines are output, so they sidestep the input-only
+  ;; wrapping above and are highlighted wherever they appear.
+  (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
 
@@ -138,20 +157,54 @@ output in the buffer cannot skew the paren depth."
          (>= (point) start)
          (> (car (parse-partial-sexp start (point))) 0))))
 
+(defun rackton-repl--error-at-point ()
+  "Parsed (FILE LINE COL) when point is on a Rackton error line, else nil.
+LINE and COL are integers, as Rackton reports them (LINE 1-based, COL
+0-based)."
+  (save-excursion
+    (forward-line 0)
+    (when (looking-at rackton-repl--error-line-regexp)
+      (list (match-string-no-properties 1)
+            (string-to-number (match-string-no-properties 2))
+            (string-to-number (match-string-no-properties 3))))))
+
+(defun rackton-repl--visit-error (loc)
+  "Visit error LOC — a list (FILE LINE COL) — in another window.
+FILE is resolved against the REPL buffer's `default-directory' (where
+the REPL process runs, so its relative paths match); LINE is 1-based
+and COL 0-based."
+  (let* ((file (nth 0 loc))
+         (line (nth 1 loc))
+         (col (nth 2 loc))
+         (path (expand-file-name file)))
+    (unless (file-exists-p path)
+      (user-error "Cannot find error source: %s" path))
+    (let ((buf (find-file-noselect path)))
+      (with-current-buffer buf
+        (goto-char (point-min))
+        (forward-line (1- line))
+        (move-to-column col))
+      (pop-to-buffer buf))))
+
 (defun rackton-repl-return ()
-  "Send the input, or open an indented line.
-Submit only when the whole input is complete and point is not inside
-an s-expression; otherwise open a new line so the form keeps growing."
+  "Visit an error, send the input, or open an indented line.
+On a Rackton error line, jump to its source location, the way
+compilation-mode's RET does.  Otherwise submit when the whole input is
+complete and point is not inside an s-expression; else open a new line
+so the form keeps growing."
   (interactive)
-  (let* ((proc (get-buffer-process (current-buffer)))
-         (input (and proc
-                     (buffer-substring-no-properties
-                      (process-mark proc) (point-max)))))
-    (if (and input
-             (rackton-repl--input-complete-p input)
-             (not (rackton-repl--inside-sexp-p)))
-        (comint-send-input)
-      (newline-and-indent))))
+  (let ((err (rackton-repl--error-at-point)))
+    (if err
+        (rackton-repl--visit-error err)
+      (let* ((proc (get-buffer-process (current-buffer)))
+             (input (and proc
+                         (buffer-substring-no-properties
+                          (process-mark proc) (point-max)))))
+        (if (and input
+                 (rackton-repl--input-complete-p input)
+                 (not (rackton-repl--inside-sexp-p)))
+            (comint-send-input)
+          (newline-and-indent))))))
 
 (defun rackton-repl--indent-line ()
   "Indent the current line of REPL input.

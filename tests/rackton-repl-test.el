@@ -193,6 +193,55 @@ LSP server's hover is the single source of type-at-point."
         (rackton-repl-eldoc (lambda (d &rest _) (setq doc d)))
         (should (string-prefix-p "map ::" doc))))))
 
+;;; Error navigation
+
+(ert-deftest rackton-repl-error-at-point-parses-location ()
+  "On an error line, the location FILE LINE COL is recovered."
+  (with-temp-buffer
+    (insert "error: Racket/rackton-example.rkt:31:0: infer: wrong type\n")
+    (goto-char (point-min))
+    (should (equal (rackton-repl--error-at-point)
+                   '("Racket/rackton-example.rkt" 31 0))))
+  ;; A non-error line yields nil.
+  (with-temp-buffer
+    (insert "(require \"foo.rkt\")\n")
+    (goto-char (point-min))
+    (should-not (rackton-repl--error-at-point))))
+
+(ert-deftest rackton-repl-visit-error-opens-source-at-location ()
+  "Visiting a location lands at the 1-based line and 0-based column."
+  (let ((file (make-temp-file "rackton-err" nil ".rkt")))
+    (with-temp-file file (insert "line one\nline two\nABCDEF\n"))
+    (unwind-protect
+        (cl-letf (((symbol-function 'pop-to-buffer) #'ignore))
+          (rackton-repl--visit-error (list file 3 2))
+          (with-current-buffer (get-file-buffer file)
+            (should (= (line-number-at-pos) 3))
+            (should (= (current-column) 2))))
+      (when (get-file-buffer file) (kill-buffer (get-file-buffer file)))
+      (delete-file file))))
+
+(ert-deftest rackton-repl-error-line-is-fontified ()
+  "The first line of an error gets the error face; output, so unwrapped."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert "error: foo.rkt:31:0: infer: wrong type")
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (should (eq (get-text-property (point) 'face) 'rackton-repl-error-face))))
+
+(ert-deftest rackton-repl-return-visits-error-on-error-line ()
+  "RET on an error line jumps to the source instead of submitting."
+  (let (visited)
+    (cl-letf (((symbol-function 'rackton-repl--visit-error)
+               (lambda (loc) (setq visited loc))))
+      (with-temp-buffer
+        (inferior-rackton-mode)
+        (insert "error: foo.rkt:31:0: infer: wrong type")
+        (goto-char (point-min))
+        (rackton-repl-return)
+        (should (equal visited '("foo.rkt" 31 0)))))))
+
 ;;; Completion
 
 (ert-deftest rackton-repl-completions-parses-reply ()
