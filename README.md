@@ -64,12 +64,19 @@ comint buffer. From any `rackton-mode` buffer:
 | `C-c M-o` | `rackton-repl-clear-buffer` | clear the REPL display (keeps the session) |
 | `C-c M-r` | `rackton-repl-reset`      | reset the session, discarding all definitions (`,clear`) |
 
-Two more session-aware queries have no default key: `M-x
-rackton-repl-search` (`,search` — whole-signature search; a string
-searches names) and `M-x rackton-repl-returns` (`,returns` — by result
-type). These see the session's own definitions, where their shell
-counterparts (`rackton-search`, `rackton-search-returns` under
-*Tooling*) read only the installed standard library.
+Two more session-aware queries answer over the live session:
+`rackton-repl-search` (`,search` — whole-signature search; a string
+searches names) and `rackton-repl-returns` (`,returns` — by result
+type). They share the `C-c C-f` ("find") prefix with the stdlib search
+commands (see *Tooling*), as the `Control` variants:
+
+| Key | Command | Effect |
+|-----|---------|--------|
+| `C-c C-f C-s` | `rackton-repl-search`  | session signature search (`,search`) |
+| `C-c C-f C-r` | `rackton-repl-returns` | session search by result type (`,returns`) |
+
+These see the session's own definitions, where their shell counterparts
+read only the installed standard library.
 
 When the REPL is running, eldoc shows the inferred type of the symbol
 at point (cached; the cache empties whenever code is sent). When eglot
@@ -132,16 +139,21 @@ Hoogle-style search over the installed standard library, with **no
 running REPL** required. Results open in `*rackton-search*` where each
 `file:line` is a button that jumps to the definition.
 
-| Command                  | Searches by                              |
-|--------------------------|------------------------------------------|
-| `rackton-search`         | a type pattern, e.g. `(-> (List a) Integer)` |
-| `rackton-search-returns` | result type                              |
-| `rackton-search-accepts` | accepted argument type                   |
-| `rackton-search-name`    | name substring                           |
+| Key | Command | Searches by |
+|-----|---------|-------------|
+| `C-c C-f s` | `rackton-search`         | a type pattern, e.g. `(-> (List a) Integer)` |
+| `C-c C-f r` | `rackton-search-returns` | result type |
+| `C-c C-f a` | `rackton-search-accepts` | accepted argument type |
+| `C-c C-f n` | `rackton-search-name`    | name substring |
 
-(The REPL's `C-c C-a` `rackton-accepts` answers the same question over
-a *live session*, where it can also filter by which instances are in
-scope; this shell search reads the static index and does not.)
+The `C-c C-f` ("find") prefix groups all signature search: a plain
+letter searches the standard library (above); the `Control` variant
+searches the live session (`C-c C-f C-s`, `C-c C-f C-r` — see *The
+REPL*).
+
+(The REPL's `C-c C-a` `rackton-accepts` answers the accepts question
+over a *live session*, where it can also filter by which instances are
+in scope; this shell search reads the static index and does not.)
 
 ## Development
 

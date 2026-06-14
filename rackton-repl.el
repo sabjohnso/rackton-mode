@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.17
+;; Version: 0.4.18
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -486,6 +486,10 @@ Appended, so eglot's LSP completion (when present) is consulted first."
 (define-key rackton-mode-map (kbd "C-c C-d") #'rackton-describe-symbol)
 (define-key rackton-mode-map (kbd "C-c C-s") #'rackton-show-source)
 (define-key rackton-mode-map (kbd "C-c C-a") #'rackton-accepts)
+;; Session-aware search under the `C-c C-f' ("find") prefix, as the
+;; Control variants of the stdlib searches `rackton-search' binds there.
+(define-key rackton-mode-map (kbd "C-c C-f C-s") #'rackton-repl-search)
+(define-key rackton-mode-map (kbd "C-c C-f C-r") #'rackton-repl-returns)
 (define-key rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
 (define-key inferior-rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
 (define-key rackton-mode-map (kbd "C-c M-r") #'rackton-repl-reset)

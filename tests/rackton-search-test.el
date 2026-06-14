@@ -54,5 +54,13 @@
     (skip-unless (and out (string-match-p "::" out)))
     (should (string-match-p "concat-map ::" out))))
 
+(ert-deftest rackton-search-binds-shell-keys ()
+  "The stdlib search commands are on the C-c C-f prefix."
+  (require 'rackton-mode)
+  (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f s")) 'rackton-search))
+  (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f r")) 'rackton-search-returns))
+  (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f a")) 'rackton-search-accepts))
+  (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f n")) 'rackton-search-name)))
+
 (provide 'rackton-search-test)
 ;;; rackton-search-test.el ends here

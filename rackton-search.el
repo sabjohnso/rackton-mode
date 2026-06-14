@@ -1,7 +1,7 @@
 ;;; rackton-search.el --- Signature search for Rackton  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.14
+;; Version: 0.4.18
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, tools
 
@@ -152,6 +152,16 @@ PATTERN is a type pattern, e.g. (-> (List a) Integer)."
   (interactive "sName contains: ")
   (rackton-search--display (list "--name" name)
                            (format "Name contains: %s" name)))
+
+;;; Keybindings
+;;
+;; Under the `C-c C-f' ("find") prefix in source buffers, alongside the
+;; session-aware search the REPL binds there as the Control variants.
+
+(define-key rackton-mode-map (kbd "C-c C-f s") #'rackton-search)
+(define-key rackton-mode-map (kbd "C-c C-f r") #'rackton-search-returns)
+(define-key rackton-mode-map (kbd "C-c C-f a") #'rackton-search-accepts)
+(define-key rackton-mode-map (kbd "C-c C-f n") #'rackton-search-name)
 
 (provide 'rackton-search)
 ;;; rackton-search.el ends here

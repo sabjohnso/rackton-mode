@@ -405,6 +405,11 @@ LSP server's hover is the single source of type-at-point."
       (with-current-buffer "*rackton-doc*"
         (should (string-prefix-p "filter" (buffer-string)))))))
 
+(ert-deftest rackton-repl-binds-session-search-keys ()
+  "The session search commands are on the C-c C-f prefix, Control variants."
+  (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f C-s")) 'rackton-repl-search))
+  (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f C-r")) 'rackton-repl-returns)))
+
 (ert-deftest rackton-repl-search-fills-doc-buffer ()
   "Integration: ,search over the session finds a known signature match."
   (rackton-test--ensure-repl)
