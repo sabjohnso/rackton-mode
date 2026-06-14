@@ -89,9 +89,11 @@ When the REPL prints an error carrying a source location
 and either `RET` with point on that line or a mouse click on it jumps to
 the location, the way `compilation-mode` does. The file is resolved
 against the REPL's working directory. The detail below the first line is
-syntax-highlighted as Rackton code — the `expected:` / `got:` types and
-the `in:` form get the usual type, constructor, and keyword faces, with
-the labels themselves emphasized.
+syntax-highlighted: the `expected:` / `got:` lines are type information,
+so every capitalized name there is a type, while the `in:` form is
+Rackton code, where the usual type/constructor/keyword distinction
+applies (so the same name can read as a type in the signature and a
+constructor in a pattern). The labels themselves are emphasized.
 
 The REPL integration is layered — transport (comint), a query channel
 (`rackton-repl-query`), and UI commands — the seam through which the

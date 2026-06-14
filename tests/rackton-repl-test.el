@@ -308,6 +308,47 @@ point must be set after the window is selected, not before."
     (forward-line 1)
     (should-not (rackton-repl--error-detail-line-p (point)))))
 
+(ert-deftest rackton-repl-error-detail-context-splits-type-and-code ()
+  "expected:/got: lines are type context; in: and below are code."
+  (with-temp-buffer
+    (insert (concat "error: f.rkt:1:0: bad\n"
+                    "  expected: (Maybe a)\n"
+                    "  got:      (List Integer)\n"
+                    "  in: (define x (Just 1))\n"
+                    "        (more)\n"))
+    (goto-char (point-min))
+    (should-not (rackton-repl--error-detail-context (point))) ; head
+    (forward-line 1)
+    (should (eq (rackton-repl--error-detail-context (point)) 'type))   ; expected
+    (forward-line 1)
+    (should (eq (rackton-repl--error-detail-context (point)) 'type))   ; got
+    (forward-line 1)
+    (should (eq (rackton-repl--error-detail-context (point)) 'code))   ; in:
+    (forward-line 1)
+    (should (eq (rackton-repl--error-detail-context (point)) 'code)))) ; in: continuation
+
+(ert-deftest rackton-repl-type-detail-reads-applications-as-types ()
+  "In expected/got, a type application like (Maybe a) is a type, not a ctor;
+after in:, a constructor application stays a constructor."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "error: foo.rkt:1:0: infer: bad\n"
+                     "  expected: (Maybe a)\n"
+                     "  got:      (List Integer)\n"
+                     "  in: (define x (Just 1))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "Maybe")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'font-lock-type-face))
+    (search-forward "List")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'font-lock-type-face))
+    (search-forward "Integer")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'font-lock-type-face))
+    (search-forward "Just")
+    (should (eq (get-text-property (match-beginning 0) 'face) 'rackton-constructor-face))))
+
 (ert-deftest rackton-repl-error-detail-is-fontified-as-code ()
   "The types and form after the first error line get Rackton faces."
   (with-temp-buffer

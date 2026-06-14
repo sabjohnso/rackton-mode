@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.22
+;; Version: 0.4.23
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -90,42 +90,57 @@ lets through on error-detail lines.")
 
 ;;; Layer 1: transport
 
-(defun rackton-repl--error-detail-line-p (pos)
-  "Non-nil when POS lies on an indented detail line of an error block.
-Detail lines follow the `error:' first line and are indented; they hold
-the expected/got types and the `in:' form, all Rackton code.  Found by
-climbing the indented lines above POS to their non-indented head and
-checking it is an `error:' line — so a ,info reply's indented lines,
-whose head is not an error, are excluded."
+(defun rackton-repl--error-detail-context (pos)
+  "Classify the error-detail line at POS as `type', `code', or nil.
+Climbs the indented lines above POS to the block's non-indented head.
+The head must be an `error:' line — so a ,info reply's indented lines,
+whose head is not an error, return nil.  Within the block the
+`expected:'/`got:' lines (and their wrapped continuations) are `type'
+— pure type information — while the `in:' label and everything below
+it are `code', a Rackton form.  Plain prose output returns nil."
   (save-excursion
     (goto-char pos)
     (forward-line 0)
     (and (looking-at-p "[ \t]")
-         (progn
-           (while (and (looking-at-p "[ \t]") (not (bobp)))
-             (forward-line -1))
-           (looking-at-p "error:")))))
+         (let ((context 'type))
+           (catch 'result
+             (while t
+               (when (looking-at-p "[ \t]*in:")
+                 (setq context 'code))
+               (when (looking-at-p "error:")
+                 (throw 'result context))
+               (when (or (bobp) (not (looking-at-p "[ \t]")))
+                 (throw 'result nil)) ; reached the top or left the block
+               (forward-line -1)))))))
+
+(defun rackton-repl--error-detail-line-p (pos)
+  "Non-nil when POS lies on any detail line of an error block."
+  (and (rackton-repl--error-detail-context pos) t))
 
 (defun rackton-repl--code-at-p (pos)
-  "Non-nil when POS holds Rackton code the language keywords should fontify.
-True for user input (anything that is not process output) and for the
-indented detail lines of an error block, but not for other output —
-banners and ,info/,type replies, which are prose."
+  "Non-nil where POS holds Rackton code the language keywords should fontify.
+True for user input (anything that is not process output) and for an
+error's `in:' form, but not for the `expected:'/`got:' type detail (a
+type, fontified separately) nor for other output — banners and
+,info/,type replies, which are prose."
   (or (not (eq (get-text-property pos 'field) 'output))
-      (rackton-repl--error-detail-line-p pos)))
+      (eq (rackton-repl--error-detail-context pos) 'code)))
 
-(defun rackton-repl--code-only (matcher)
-  "Wrap font-lock MATCHER to fire only where REPL text is Rackton code.
-MATCHER is a regexp string or a matcher function, as in
-`rackton-font-lock-keywords'.  The returned matcher behaves like
-MATCHER but skips any match that is neither input nor error detail
-\(see `rackton-repl--code-at-p')."
+(defun rackton-repl--type-detail-at-p (pos)
+  "Non-nil when POS is on an error's `expected:'/`got:' type detail."
+  (eq (rackton-repl--error-detail-context pos) 'type))
+
+(defun rackton-repl--matcher-where (matcher pred)
+  "Wrap font-lock MATCHER to fire only where PRED holds at the match start.
+MATCHER is a regexp string or a matcher function; PRED takes a buffer
+position.  Used to confine the language keywords to code, and the
+type-name rule to error type detail."
   (lambda (limit)
     (let (hit)
       (while (and (setq hit (if (functionp matcher)
                                 (funcall matcher limit)
                               (re-search-forward matcher limit t)))
-                  (not (rackton-repl--code-at-p (match-beginning 0)))))
+                  (not (funcall pred (match-beginning 0)))))
       hit)))
 
 (define-derived-mode inferior-rackton-mode comint-mode "Inferior Rackton"
@@ -164,10 +179,19 @@ MATCHER but skips any match that is neither input nor error detail
   ;; can skip it.
   (font-lock-add-keywords
    nil (mapcar (lambda (kw)
-                 (cons (rackton-repl--code-only (car kw)) (cdr kw)))
+                 (cons (rackton-repl--matcher-where (car kw) #'rackton-repl--code-at-p)
+                       (cdr kw)))
                rackton-font-lock-keywords))
+  ;; The expected:/got: detail is pure type information, so every
+  ;; capitalized name there is a type — never a data constructor, the
+  ;; way the positional classifier would read one in expression
+  ;; position.
+  (font-lock-add-keywords
+   nil `((,(rackton-repl--matcher-where rackton--type-name-regexp
+                                        #'rackton-repl--type-detail-at-p)
+          0 'font-lock-type-face)))
   ;; Error first lines and labels are output, so they sidestep the
-  ;; code-only wrapping above and are highlighted wherever they appear.
+  ;; wrapping above and are highlighted wherever they appear.
   (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
