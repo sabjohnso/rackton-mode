@@ -64,6 +64,13 @@ comint buffer. From any `rackton-mode` buffer:
 | `C-c M-o` | `rackton-repl-clear-buffer` | clear the REPL display (keeps the session) |
 | `C-c M-r` | `rackton-repl-reset`      | reset the session, discarding all definitions (`,clear`) |
 
+Two more session-aware queries have no default key: `M-x
+rackton-repl-search` (`,search` — whole-signature search; a string
+searches names) and `M-x rackton-repl-returns` (`,returns` — by result
+type). These see the session's own definitions, where their shell
+counterparts (`rackton-search`, `rackton-search-returns` under
+*Tooling*) read only the installed standard library.
+
 When the REPL is running, eldoc shows the inferred type of the symbol
 at point (cached; the cache empties whenever code is sent). When eglot
 manages the buffer (see *Tooling* below), the REPL eldoc steps aside so

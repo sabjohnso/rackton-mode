@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.16
+;; Version: 0.4.17
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -368,6 +368,22 @@ Hoogle-style search by argument position, answered by the REPL's
 ,accepts command (a richer search service is planned upstream)."
   (interactive "sAccepts type: ")
   (rackton-repl--show-doc (rackton-repl-query (concat ",accepts " type))))
+
+(defun rackton-repl-search (signature)
+  "Search the live session, imports, and prelude by SIGNATURE.
+Hoogle-style whole-signature search answered by the REPL's ,search; a
+string SIGNATURE searches names instead.  Unlike `rackton-search',
+which reads the installed standard-library index from a shell, this
+sees the session's own definitions."
+  (interactive "sSearch signature: ")
+  (rackton-repl--show-doc (rackton-repl-query (concat ",search " signature))))
+
+(defun rackton-repl-returns (type)
+  "List session, imported, and prelude functions returning TYPE.
+Answered by the REPL's ,returns; sees the session's own definitions,
+where the shell `rackton-search-returns' sees only the standard library."
+  (interactive "sReturns type: ")
+  (rackton-repl--show-doc (rackton-repl-query (concat ",returns " type))))
 
 ;;; Layer 3: clearing the display
 

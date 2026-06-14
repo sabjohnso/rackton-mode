@@ -383,6 +383,48 @@ LSP server's hover is the single source of type-at-point."
       (goto-char (point-min))
       (should (search-forward "append" nil t)))))
 
+(ert-deftest rackton-repl-search-sends-search-command ()
+  "rackton-repl-search issues ,search and shows the reply."
+  (let (sent)
+    (cl-letf (((symbol-function 'rackton-repl-query)
+               (lambda (input &rest _) (setq sent input) "length :: …"))
+              ((symbol-function 'display-buffer) #'ignore))
+      (rackton-repl-search "(-> (List a) Integer)")
+      (should (equal sent ",search (-> (List a) Integer)"))
+      (with-current-buffer "*rackton-doc*"
+        (should (string-prefix-p "length" (buffer-string)))))))
+
+(ert-deftest rackton-repl-returns-sends-returns-command ()
+  "rackton-repl-returns issues ,returns and shows the reply."
+  (let (sent)
+    (cl-letf (((symbol-function 'rackton-repl-query)
+               (lambda (input &rest _) (setq sent input) "filter :: …"))
+              ((symbol-function 'display-buffer) #'ignore))
+      (rackton-repl-returns "(List Integer)")
+      (should (equal sent ",returns (List Integer)"))
+      (with-current-buffer "*rackton-doc*"
+        (should (string-prefix-p "filter" (buffer-string)))))))
+
+(ert-deftest rackton-repl-search-fills-doc-buffer ()
+  "Integration: ,search over the session finds a known signature match."
+  (rackton-test--ensure-repl)
+  (cl-letf (((symbol-function 'display-buffer) #'ignore))
+    (rackton-repl-search "(-> (List a) Integer)"))
+  (with-current-buffer "*rackton-doc*"
+    (save-excursion
+      (goto-char (point-min))
+      (should (search-forward "length" nil t)))))
+
+(ert-deftest rackton-repl-returns-fills-doc-buffer ()
+  "Integration: ,returns over the session finds a function returning the type."
+  (rackton-test--ensure-repl)
+  (cl-letf (((symbol-function 'display-buffer) #'ignore))
+    (rackton-repl-returns "(List Integer)"))
+  (with-current-buffer "*rackton-doc*"
+    (save-excursion
+      (goto-char (point-min))
+      (should (search-forward "filter" nil t)))))
+
 (ert-deftest rackton-repl-clear-buffer-erases-output-keeps-session ()
   (rackton-test--ensure-repl)
   ;; A definition and some output to clear away.
