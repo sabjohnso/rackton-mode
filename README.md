@@ -27,6 +27,9 @@ how Scheme buffers indent.
 
 - An inferior REPL (`rackton-repl.el`) wrapping `racket -l
   rackton/repl` with a SLIME-flavored command set.
+- Optional, dependency-free integration with Rackton's LSP server
+  (eglot), debug server (dape), and signature-search tool. See
+  *Tooling* below.
 
 ## Installation
 
@@ -34,6 +37,9 @@ how Scheme buffers indent.
 (add-to-list 'load-path "/path/to/rackton-mode")
 (require 'rackton-mode)
 (require 'rackton-repl)   ; optional: the inferior REPL
+(require 'rackton-lsp)    ; optional: eglot/LSP integration
+(require 'rackton-dap)    ; optional: dape/debug integration
+(require 'rackton-search) ; optional: signature search
 ```
 
 Files whose first line is `#lang rackton` then open in `rackton-mode`
@@ -59,12 +65,60 @@ comint buffer. From any `rackton-mode` buffer:
 | `C-c M-r` | `rackton-repl-reset`      | reset the session, discarding all definitions (`,clear`) |
 
 When the REPL is running, eldoc shows the inferred type of the symbol
-at point (cached; the cache empties whenever code is sent).
+at point (cached; the cache empties whenever code is sent). When eglot
+manages the buffer (see *Tooling* below), the REPL eldoc steps aside so
+the LSP server's hover is the single source of type-at-point — and no
+running REPL is needed for it.
 
 The REPL integration is layered — transport (comint), a query channel
-(`rackton-repl-query`), and UI commands — so the Rackton LSP server,
-debug server, and search service can each replace a backend when they
-ship, without changing any command or keybinding.
+(`rackton-repl-query`), and UI commands — the seam through which the
+*Tooling* integrations below take over static analysis from the REPL.
+
+## Tooling
+
+Rackton ships an LSP server, a DAP debug server, and a signature-search
+tool. Each integration is **optional and lazy**: it activates only once
+the relevant Emacs package is loaded, so it adds no hard dependency.
+
+```elisp
+(require 'rackton-lsp)     ; eglot ⇄ racket -l rackton/lsp
+(require 'rackton-dap)     ; dape  ⇄ racket -l rackton/dap
+(require 'rackton-search)  ; racket -l rackton/search
+```
+
+### LSP (eglot)
+
+`require`-ing `rackton-lsp` registers the server with eglot. Run `M-x
+eglot` in a `#lang rackton` buffer (or, to connect automatically, add
+`(add-hook 'rackton-mode-hook #'eglot-ensure)`). You then get, from
+Rackton's own analyzer: diagnostics via flymake, type hover via eldoc,
+completion via completion-at-point, go-to-definition via xref, and
+document symbols via imenu.
+
+### Debugging (dape)
+
+`require`-ing `rackton-dap` adds a `rackton` configuration to dape. `M-x
+dape` offers it in Rackton buffers: breakpoints by source line,
+stepping, stack frames, and locals under their source names. The DAP
+server needs the gui-debugger collection at runtime (`raco pkg install
+drracket`).
+
+### Signature search
+
+Hoogle-style search over the installed standard library, with **no
+running REPL** required. Results open in `*rackton-search*` where each
+`file:line` is a button that jumps to the definition.
+
+| Command                  | Searches by                              |
+|--------------------------|------------------------------------------|
+| `rackton-search`         | a type pattern, e.g. `(-> (List a) Integer)` |
+| `rackton-search-returns` | result type                              |
+| `rackton-search-accepts` | accepted argument type                   |
+| `rackton-search-name`    | name substring                           |
+
+(The REPL's `C-c C-a` `rackton-accepts` answers the same question over
+a *live session*, where it can also filter by which instances are in
+scope; this shell search reads the static index and does not.)
 
 ## Development
 
