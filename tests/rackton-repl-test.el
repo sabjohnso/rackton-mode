@@ -398,6 +398,67 @@ after in:, a constructor application stays a constructor."
     (search-forward "Predicate")
     (should-not (get-text-property (match-beginning 0) 'face))))
 
+;;; History navigation
+
+(ert-deftest rackton-repl-mp-bound-to-history-search ()
+  "M-p runs the position-sensitive history command in the REPL."
+  (should (eq (lookup-key inferior-rackton-mode-map (kbd "M-p"))
+              'rackton-repl-previous-input)))
+
+(defun rackton-test--wait-for-prompt ()
+  "Wait for the REPL buffer to end at a fresh prompt."
+  (rackton-test--wait-for
+   (lambda ()
+     (with-current-buffer (rackton-repl--buffer)
+       (save-excursion
+         (goto-char (point-max))
+         (forward-line 0)
+         (looking-at-p rackton-repl-prompt-regexp))))
+   15))
+
+(ert-deftest rackton-repl-previous-input-matches-text-before-point ()
+  "With text before point, M-p recalls the previous input starting with it."
+  (rackton-test--ensure-repl)
+  (rackton-repl--send-form "(define alpha-xyz 1)")
+  (rackton-test--wait-for-prompt)
+  (rackton-repl--send-form "(define beta-xyz 2)")
+  (rackton-test--wait-for-prompt)
+  (with-current-buffer (rackton-repl--buffer)
+    (let ((proc (get-buffer-process (current-buffer))))
+      (goto-char (point-max))
+      (delete-region (process-mark proc) (point-max))
+      (unwind-protect
+          (progn
+            (goto-char (point-max))
+            (insert "(define al")       ; point after "al" — not the input start
+            (setq last-command nil comint-input-ring-index nil)
+            (rackton-repl-previous-input 1)
+            (let ((input (buffer-substring-no-properties
+                          (process-mark proc) (point-max))))
+              (should (string-match-p "alpha-xyz" input))
+              (should-not (string-match-p "beta-xyz" input))))
+        (delete-region (process-mark proc) (point-max))))))
+
+(ert-deftest rackton-repl-previous-input-at-start-cycles-all ()
+  "At the input start, M-p recalls the most recent input regardless of text."
+  (rackton-test--ensure-repl)
+  (rackton-repl--send-form "(define gamma-xyz 9)")
+  (rackton-test--wait-for-prompt)
+  (with-current-buffer (rackton-repl--buffer)
+    (let ((proc (get-buffer-process (current-buffer))))
+      (goto-char (point-max))
+      (delete-region (process-mark proc) (point-max))
+      (unwind-protect
+          (progn
+            (goto-char (process-mark proc))  ; at the input start
+            (setq last-command nil comint-input-ring-index nil)
+            (rackton-repl-previous-input 1)
+            (should (string-match-p
+                     "gamma-xyz"
+                     (buffer-substring-no-properties
+                      (process-mark proc) (point-max)))))
+        (delete-region (process-mark proc) (point-max))))))
+
 ;;; Completion
 
 (ert-deftest rackton-repl-completions-parses-reply ()

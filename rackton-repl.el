@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.23
+;; Version: 0.4.24
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -195,6 +195,7 @@ type-name rule to error type detail."
   (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
+(define-key inferior-rackton-mode-map (kbd "M-p") #'rackton-repl-previous-input)
 
 (defconst rackton-repl--continuation-regexp "\\.\\.> "
   "The piped REPL's continuation prompt.")
@@ -291,6 +292,42 @@ so the form keeps growing."
                  (not (rackton-repl--inside-sexp-p)))
             (comint-send-input)
           (newline-and-indent))))))
+
+;;; Layer 1: history navigation
+
+(defvar-local rackton-repl--history-matching nil
+  "Non-nil while a run of \\[rackton-repl-previous-input] prefix-matches.
+The first press of a run picks plain cycling or prefix matching from the
+cursor position; the rest of the run holds that choice, so repeated
+presses keep cycling the same set.")
+
+(defun rackton-repl--at-input-start-p ()
+  "Non-nil when point is at the start of the REPL's editable input."
+  (let ((proc (get-buffer-process (current-buffer))))
+    (and proc (<= (point) (marker-position (process-mark proc))))))
+
+(defun rackton-repl-previous-input (n)
+  "Recall the Nth previous input, matching the text before point.
+At the very start of the input this is `comint-previous-input', which
+cycles the whole history.  With text before point it is
+`comint-previous-matching-input-from-input', which recalls the previous
+input beginning with that text.  The choice is made on the first press
+of a run and kept for the rest of it, so repeated presses keep cycling
+the same set."
+  (interactive "p")
+  (let ((continuing (eq last-command 'rackton-repl-previous-input)))
+    (unless continuing
+      (setq rackton-repl--history-matching
+            (not (rackton-repl--at-input-start-p))))
+    (if rackton-repl--history-matching
+        ;; `comint-previous-matching-input-from-input' continues a run
+        ;; only when it sees itself as `last-command'; this command sits
+        ;; between presses, so spoof it once the run is under way.
+        (let ((last-command (if continuing
+                                'comint-previous-matching-input-from-input
+                              last-command)))
+          (comint-previous-matching-input-from-input n))
+      (comint-previous-input n))))
 
 (defun rackton-repl--indent-line ()
   "Indent the current line of REPL input.
