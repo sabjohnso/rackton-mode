@@ -78,12 +78,14 @@ commands (see *Tooling*), as the `Control` variants:
 These see the session's own definitions, where their shell counterparts
 read only the installed standard library.
 
-`M-p` recalls earlier input. At the very start of the input it cycles
-the whole history (`comint-previous-input`); with text before point it
-recalls the previous input beginning with that text
-(`comint-previous-matching-input-from-input`). The first press of a run
-chooses the mode from the cursor position and the rest of the run keeps
-it, so repeated presses cycle the same set.
+`M-p` recalls earlier input, and `M-n` later input. At the very start of
+the input they cycle the whole history (`comint-previous-input` /
+`comint-next-input`); with text before point they move to the
+previous/next input beginning with that text
+(`comint-{previous,next}-matching-input-from-input`). The first press of
+a run chooses the mode from the cursor position and the rest of the run
+keeps it, so repeated presses — in either direction — cycle the same
+set.
 
 When the REPL is running, eldoc shows the inferred type of the symbol
 at point (cached; the cache empties whenever code is sent). When eglot

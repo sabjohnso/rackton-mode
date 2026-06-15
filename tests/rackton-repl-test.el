@@ -405,6 +405,11 @@ after in:, a constructor application stays a constructor."
   (should (eq (lookup-key inferior-rackton-mode-map (kbd "M-p"))
               'rackton-repl-previous-input)))
 
+(ert-deftest rackton-repl-mn-bound-to-history-search ()
+  "M-n runs the position-sensitive forward-history command in the REPL."
+  (should (eq (lookup-key inferior-rackton-mode-map (kbd "M-n"))
+              'rackton-repl-next-input)))
+
 (defun rackton-test--wait-for-prompt ()
   "Wait for the REPL buffer to end at a fresh prompt."
   (rackton-test--wait-for
@@ -455,6 +460,35 @@ after in:, a constructor application stays a constructor."
             (rackton-repl-previous-input 1)
             (should (string-match-p
                      "gamma-xyz"
+                     (buffer-substring-no-properties
+                      (process-mark proc) (point-max)))))
+        (delete-region (process-mark proc) (point-max))))))
+
+(ert-deftest rackton-repl-next-input-mirrors-previous-when-matching ()
+  "In a matching run, M-n moves forward through the matched set."
+  (rackton-test--ensure-repl)
+  (rackton-repl--send-form "(define nnn-a 1)")
+  (rackton-test--wait-for-prompt)
+  (rackton-repl--send-form "(define nnn-b 2)")
+  (rackton-test--wait-for-prompt)
+  (rackton-repl--send-form "(define nnn-c 3)")
+  (rackton-test--wait-for-prompt)
+  (with-current-buffer (rackton-repl--buffer)
+    (let ((proc (get-buffer-process (current-buffer))))
+      (goto-char (point-max))
+      (delete-region (process-mark proc) (point-max))
+      (unwind-protect
+          (progn
+            (goto-char (point-max))
+            (insert "(define nnn-")
+            (setq last-command nil comint-input-ring-index nil)
+            (rackton-repl-previous-input 1)   ; -> nnn-c
+            (setq last-command 'rackton-repl-previous-input)
+            (rackton-repl-previous-input 1)   ; -> nnn-b
+            (setq last-command 'rackton-repl-previous-input)
+            (rackton-repl-next-input 1)       ; -> nnn-c (forward again)
+            (should (string-match-p
+                     "nnn-c"
                      (buffer-substring-no-properties
                       (process-mark proc) (point-max)))))
         (delete-region (process-mark proc) (point-max))))))

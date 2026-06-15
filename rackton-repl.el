@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.24
+;; Version: 0.4.25
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -196,6 +196,7 @@ type-name rule to error type detail."
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
 (define-key inferior-rackton-mode-map (kbd "M-p") #'rackton-repl-previous-input)
+(define-key inferior-rackton-mode-map (kbd "M-n") #'rackton-repl-next-input)
 
 (defconst rackton-repl--continuation-regexp "\\.\\.> "
   "The piped REPL's continuation prompt.")
@@ -306,28 +307,49 @@ presses keep cycling the same set.")
   (let ((proc (get-buffer-process (current-buffer))))
     (and proc (<= (point) (marker-position (process-mark proc))))))
 
+(defun rackton-repl--history-move (n plain matching)
+  "Move N steps through the input history, plain or prefix-matching.
+PLAIN is the whole-history command (`comint-previous-input' or
+`comint-next-input'); MATCHING is its prefix-matching counterpart.  The
+mode is chosen on the first press of a run from the cursor position and
+held for the rest of the run (`rackton-repl--history-matching'), so a
+run of \\[rackton-repl-previous-input] / \\[rackton-repl-next-input]
+keeps cycling the same set."
+  (let ((continuing (memq last-command '(rackton-repl-previous-input
+                                         rackton-repl-next-input))))
+    (unless continuing
+      (setq rackton-repl--history-matching
+            (not (rackton-repl--at-input-start-p))))
+    (if rackton-repl--history-matching
+        ;; The comint matchers continue a run only when they see one of
+        ;; themselves as `last-command'; this command sits between
+        ;; presses, so spoof that once the run is under way.  Either
+        ;; matcher name satisfies their shared check, so both directions
+        ;; continue the same search.
+        (let ((last-command (if continuing
+                                'comint-previous-matching-input-from-input
+                              last-command)))
+          (funcall matching n))
+      (funcall plain n))))
+
 (defun rackton-repl-previous-input (n)
   "Recall the Nth previous input, matching the text before point.
 At the very start of the input this is `comint-previous-input', which
 cycles the whole history.  With text before point it is
 `comint-previous-matching-input-from-input', which recalls the previous
-input beginning with that text.  The choice is made on the first press
-of a run and kept for the rest of it, so repeated presses keep cycling
-the same set."
+input beginning with that text.  See `rackton-repl--history-move'."
   (interactive "p")
-  (let ((continuing (eq last-command 'rackton-repl-previous-input)))
-    (unless continuing
-      (setq rackton-repl--history-matching
-            (not (rackton-repl--at-input-start-p))))
-    (if rackton-repl--history-matching
-        ;; `comint-previous-matching-input-from-input' continues a run
-        ;; only when it sees itself as `last-command'; this command sits
-        ;; between presses, so spoof it once the run is under way.
-        (let ((last-command (if continuing
-                                'comint-previous-matching-input-from-input
-                              last-command)))
-          (comint-previous-matching-input-from-input n))
-      (comint-previous-input n))))
+  (rackton-repl--history-move n #'comint-previous-input
+                             #'comint-previous-matching-input-from-input))
+
+(defun rackton-repl-next-input (n)
+  "Recall the Nth next input, matching the text before point.
+The forward mirror of `rackton-repl-previous-input': at the input start
+`comint-next-input'; with text before point
+`comint-next-matching-input-from-input'."
+  (interactive "p")
+  (rackton-repl--history-move n #'comint-next-input
+                             #'comint-next-matching-input-from-input))
 
 (defun rackton-repl--indent-line ()
   "Indent the current line of REPL input.
