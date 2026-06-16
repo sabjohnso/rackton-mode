@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.25
+;; Version: 0.4.26
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -49,6 +49,12 @@
 
 (defconst rackton-repl--buffer-name "*rackton-repl*")
 
+(defconst rackton-repl-commands
+  '("type" "info" "source" "accepts" "search" "returns" "clear" "complete")
+  "REPL meta-commands, named without their leading comma.
+The single statement of which `,'-prefixed directives the REPL knows;
+the UI commands send these and font-lock highlights them.")
+
 (defface rackton-repl-error-face
   '((t :inherit error))
   "Face for the first line of a Rackton REPL error."
@@ -57,6 +63,13 @@
 (defface rackton-repl-error-label-face
   '((t :inherit bold))
   "Face for the expected:/got:/in: labels in a Rackton REPL error."
+  :group 'rackton)
+
+(defface rackton-repl-command-face
+  '((t :inherit font-lock-keyword-face))
+  "Face for a `,'-prefixed REPL meta-command at the prompt.
+Inherits the keyword face by default, but is separate so a REPL
+directive can be themed apart from the language's own keywords."
   :group 'rackton)
 
 (defconst rackton-repl--error-line-regexp
@@ -87,6 +100,14 @@ these are installed unwrapped (not filtered by
 `rackton-repl--code-only'); the detail *code* between the labels is
 fontified by the language keywords, which `rackton-repl--code-at-p'
 lets through on error-detail lines.")
+
+(defconst rackton-repl--command-font-lock-keywords
+  `((,(concat rackton-repl-prompt-regexp
+              "\\(,\\(?:" (regexp-opt rackton-repl-commands) "\\)\\)\\_>")
+     1 'rackton-repl-command-face))
+  "Font-lock for a REPL meta-command leading the prompt input.
+Anchored on the prompt so only the input's first token counts as a
+command; a `,' elsewhere on the line is an unquote, not a directive.")
 
 ;;; Layer 1: transport
 
@@ -192,7 +213,11 @@ type-name rule to error type detail."
           0 'font-lock-type-face)))
   ;; Error first lines and labels are output, so they sidestep the
   ;; wrapping above and are highlighted wherever they appear.
-  (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords))
+  (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords)
+  ;; A `,'-prefixed meta-command leading the prompt: anchored on the
+  ;; prompt itself, so it is installed unwrapped (the match begins on
+  ;; the prompt, which `rackton-repl--code-at-p' would reject).
+  (font-lock-add-keywords nil rackton-repl--command-font-lock-keywords))
 
 (define-key inferior-rackton-mode-map (kbd "RET") #'rackton-repl-return)
 (define-key inferior-rackton-mode-map (kbd "M-p") #'rackton-repl-previous-input)

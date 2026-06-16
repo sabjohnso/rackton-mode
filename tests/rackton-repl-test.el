@@ -120,6 +120,26 @@
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'font-lock-builtin-face))))
 
+(ert-deftest rackton-repl-buffer-fontifies-repl-commands ()
+  "A comma command leading the prompt input highlights as a REPL command;
+a comma elsewhere (an unquote) does not."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert "λ> ,type (sqr 2)")
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward ",type")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-repl-command-face))
+    ;; An unquote of a like-named variable, not at the input's head, is
+    ;; not a command and stays unhighlighted.
+    (insert "\nλ> `(a ,type)")
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "`(a ,")
+    (should-not (eq (get-text-property (point) 'face)
+                    'rackton-repl-command-face))))
+
 (ert-deftest rackton-repl-output-is-not-fontified-as-code ()
   "Process output is prose, not Rackton code, so the language's
 keywords must not fontify it; input on the same buffer still must."
