@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.16
+;; Version: 0.4.17
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -80,6 +80,11 @@ Lisp-traditional TAB that only ever indents."
   "Module import/export forms and their spec sub-form introducers.
 See the \"Module forms\" and \"provide-specs\" sections of the Rackton
 reference.")
+
+(defconst rackton-clause-keywords
+  '("else")
+  "Auxiliary keywords that head a clause but are not themselves forms.
+`else' names the catch-all clause of `cond' and `case'.")
 
 ;;; Font-lock
 
@@ -234,6 +239,11 @@ found, as a font-lock matcher must."
                                       rackton-expression-forms
                                       rackton-module-forms)
                               'symbols))
+     (1 font-lock-keyword-face))
+    ;; `else' heading a cond/case clause: [else ...] or (else ...).
+    ;; It is a keyword only in that position, so anchor on the open
+    ;; bracket rather than matching the bare symbol everywhere.
+    (,(concat "[[(]\\(" (regexp-opt rackton-clause-keywords) "\\)\\_>")
      (1 font-lock-keyword-face))
     ;; (: name type) — a top-level type signature.
     ("(\\(:\\)[ \t\n]+\\(\\(?:\\sw\\|\\s_\\)+\\)"

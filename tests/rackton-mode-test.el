@@ -89,6 +89,13 @@
            "(do [x <- m]\n  (pure x))"
            "do" 'font-lock-keyword-face)))
 
+(ert-deftest rackton-mode-fontifies-cond-else ()
+  ;; `else' heads the catch-all clause of cond/case; it reads as a
+  ;; keyword there, not as a value.
+  (should (rackton-test--has-face-p
+           "(cond [(< n 0) \"negative\"]\n      [(> n 0) \"positive\"]\n      [else \"neutral\"])"
+           "else" 'font-lock-keyword-face)))
+
 (ert-deftest rackton-mode-fontifies-type-signature-form ()
   (let ((code "(: parse (-> SExpr (Result Expr)))"))
     (should (rackton-test--has-face-p code ":" 'font-lock-keyword-face))
