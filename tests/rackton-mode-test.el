@@ -96,6 +96,14 @@
            "(cond [(< n 0) \"negative\"]\n      [(> n 0) \"positive\"]\n      [else \"neutral\"])"
            "else" 'font-lock-keyword-face)))
 
+(ert-deftest rackton-mode-fontifies-forall-quantifier ()
+  ;; `All' and its synonym `∀' quantify a type scheme; both read as
+  ;; keywords, not as the type names their capitalization would suggest.
+  (should (rackton-test--has-face-p
+           "(: id (All (a) (-> a a)))" "All" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(: id (∀ (a) (-> a a)))" "∀" 'font-lock-keyword-face)))
+
 (ert-deftest rackton-mode-fontifies-type-signature-form ()
   (let ((code "(: parse (-> SExpr (Result Expr)))"))
     (should (rackton-test--has-face-p code ":" 'font-lock-keyword-face))

@@ -159,11 +159,11 @@ keywords must not fontify it; input on the same buffer still must."
     (should-not (get-text-property (match-beginning 0) 'face))
     (search-forward "class")
     (should-not (get-text-property (match-beginning 0) 'face))
-    ;; `All', however, sits after `::' — the reply's type region — so it
-    ;; is a type, not prose (see the reply-type tests below).
+    ;; `All', after `::', sits in the reply's type region — but it is
+    ;; the quantifier, so it reads as a keyword, not a type.
     (search-forward "All")
     (should (eq (get-text-property (match-beginning 0) 'face)
-                'font-lock-type-face))
+                'font-lock-keyword-face))
     ;; The input form is still highlighted as before.
     (search-forward "define")
     (should (eq (get-text-property (match-beginning 0) 'face)
@@ -204,6 +204,24 @@ in the scheme is a type, but the constructor head left of `::' is not."
     (search-forward "Maybe")
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'font-lock-type-face))))
+
+(ert-deftest rackton-repl-fontifies-forall-in-reply-as-keyword ()
+  "The quantifier heading a reply's scheme — `All' or `∀' — is a keyword,
+not a type, even though it sits in the reply's type region."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "abs :: (All (a) (-> a a))\n"
+                     "foo :: (∀ (a) (-> a a))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "All")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-keyword-face))
+    (search-forward "∀")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-keyword-face))))
 
 (ert-deftest rackton-repl-fontifies-info-instance-heads ()
   "The bare type-level heads of a ,info reply — instance/implements and

@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.17
+;; Version: 0.4.18
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -86,7 +86,17 @@ reference.")
   "Auxiliary keywords that head a clause but are not themselves forms.
 `else' names the catch-all clause of `cond' and `case'.")
 
+(defconst rackton-type-quantifiers
+  '("All" "∀")
+  "The universal-type quantifier, written `All' or the mathematical `∀'.
+It heads a type scheme — (All (a) …) — and a protocol law; both spellings
+are surface synonyms (see surface.rkt's `#:datum-literals (All ∀)').")
+
 ;;; Font-lock
+
+(defconst rackton--quantifier-regexp
+  (regexp-opt rackton-type-quantifiers 'symbols)
+  "Match the type quantifier `All' or `∀' as a whole symbol.")
 
 (defconst rackton--type-name-regexp
   "\\_<[A-Z][[:alnum:]!?_/-]*\\_>"
@@ -259,6 +269,9 @@ found, as a font-lock matcher must."
     ;; here rather than inherited from scheme-mode's keywords so
     ;; buffers that only add these keywords (the REPL) highlight them.
     ("#:\\(?:\\sw\\|\\s_\\)+" . font-lock-builtin-face)
+    ;; The type quantifier `All'/`∀'.  Before the type-name rule so its
+    ;; capitalized `All' reads as a keyword, not a type name.
+    (,rackton--quantifier-regexp . font-lock-keyword-face)
     (rackton--match-type-name . font-lock-type-face)
     (rackton--match-constructor . 'rackton-constructor-face))
   "Font-lock rules layered on top of those inherited from scheme-mode.")

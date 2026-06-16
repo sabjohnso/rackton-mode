@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.27
+;; Version: 0.4.28
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -288,6 +288,14 @@ type-name rule to error type detail."
    nil `((,(rackton-repl--matcher-where rackton--type-name-regexp
                                         #'rackton-repl--reply-type-at-p)
           0 'font-lock-type-face)))
+  ;; The quantifier heading a scheme is a keyword, not a type.  Added
+  ;; after the type-name rule so — since `font-lock-add-keywords' with a
+  ;; nil HOW prepends — it sits ahead of it and wins for the capitalized
+  ;; `All'.
+  (font-lock-add-keywords
+   nil `((,(rackton-repl--matcher-where rackton--quantifier-regexp
+                                        #'rackton-repl--reply-type-at-p)
+          0 'font-lock-keyword-face)))
   ;; Error first lines and labels are output, so they sidestep the
   ;; wrapping above and are highlighted wherever they appear.
   (font-lock-add-keywords nil rackton-repl--error-font-lock-keywords)
