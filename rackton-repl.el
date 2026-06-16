@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.26
+;; Version: 0.4.27
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -151,6 +151,74 @@ type, fontified separately) nor for other output — banners and
   "Non-nil when POS is on an error's `expected:'/`got:' type detail."
   (eq (rackton-repl--error-detail-context pos) 'type))
 
+;; The ,type/,accepts/,search/,info replies print `<head> :: <type>'
+;; lines, their wrapped continuations, and — for ,info — bare type-level
+;; heads like `(Monad Maybe)'.  Everything right of `::', its hanging
+;; continuations, and those instance/superprotocol heads is pure type
+;; information, so every capitalized name there names a type, the same
+;; reading the error type detail gets.  The head left of `::', prose
+;; labels, and law bodies are not.
+
+(defun rackton-repl--line-has-type-colon-p ()
+  "Non-nil when the current line carries a `::' type separator."
+  (save-excursion
+    (forward-line 0)
+    (re-search-forward "::" (line-end-position) t)))
+
+(defun rackton-repl--after-type-colon-p (pos)
+  "Non-nil when a `::' precedes POS on POS's own line."
+  (save-excursion
+    (goto-char pos)
+    (re-search-backward "::" (line-beginning-position) t)))
+
+(defun rackton-repl--type-head-line-p (pos)
+  "Non-nil when POS's line is a ,info bare type-level head.
+A standalone instance/implements head `(Monad Maybe)' or a
+`superprotocols: …' field; capitalized names on it are types.  A law
+body begins `((' or `(=', which this rule excludes."
+  (save-excursion
+    (goto-char pos)
+    (forward-line 0)
+    (or (looking-at-p "[ \t]+([A-Z]")
+        (looking-at-p "[ \t]*superprotocols:"))))
+
+(defun rackton-repl--wrapped-type-line-p (pos)
+  "Non-nil when POS's line hangs as a continuation of a wrapped `:: type'.
+A continuation carries no `::' and is indented more deeply than the
+`::' line it hangs under; climbing stops at that shallower line."
+  (save-excursion
+    (goto-char pos)
+    (forward-line 0)
+    (let ((indent (current-indentation)))
+      (and (not (rackton-repl--line-has-type-colon-p))
+           (catch 'result
+             (while (not (bobp))
+               (forward-line -1)
+               (let ((this (current-indentation)))
+                 (cond
+                  ((looking-at-p "[ \t]*$") (throw 'result nil)) ; blank: block ends
+                  ((< this indent)          ; shallower line: a possible head
+                   (throw 'result (and (rackton-repl--line-has-type-colon-p) t)))
+                  ((rackton-repl--line-has-type-colon-p)
+                   (throw 'result nil))     ; sibling `name ::', not our head
+                  (t nil))))                ; another continuation; keep climbing
+             nil)))))
+
+(defun rackton-repl--reply-type-at-p (pos)
+  "Non-nil when POS lies in the type region of a REPL command reply.
+That is the text right of `::', its wrapped continuations, and ,info's
+bare type-level heads.  Error detail keeps its own path
+\(`rackton-repl--error-detail-context'), so it is excluded here."
+  ;; The helpers below search, which would clobber the match data the
+  ;; calling font-lock matcher set; preserve it so the type name, not a
+  ;; `::' the predicate found, is what gets fontified.
+  (save-match-data
+    (and (eq (get-text-property pos 'field) 'output)
+         (not (rackton-repl--error-detail-line-p pos))
+         (or (rackton-repl--after-type-colon-p pos)
+             (rackton-repl--type-head-line-p pos)
+             (rackton-repl--wrapped-type-line-p pos)))))
+
 (defun rackton-repl--matcher-where (matcher pred)
   "Wrap font-lock MATCHER to fire only where PRED holds at the match start.
 MATCHER is a regexp string or a matcher function; PRED takes a buffer
@@ -193,11 +261,12 @@ type-name rule to error type detail."
             #'rackton-repl--blank-before-prompts t t)
   ;; The language's keywords describe Rackton source, so they must fire
   ;; only on what the user types.  Process output — the banner and the
-  ;; ,info/,type/,source replies — is prose; fontifying it as code
-  ;; produces nonsense (a reply's "(class)" read as a keyword, a type
-  ;; name in a signature read as a constructor).  Comint already tags
-  ;; output with the `field' property `output', so the wrapped matchers
-  ;; can skip it.
+  ;; prose of ,info/,type/,source replies — is not code; fontifying it
+  ;; as code produces nonsense (a reply's "(class)" read as a keyword, a
+  ;; type name in a signature read as a constructor).  Comint already
+  ;; tags output with the `field' property `output', so the wrapped
+  ;; matchers can skip it.  (The reply's *type* regions are a separate
+  ;; rule below: type names there, not code.)
   (font-lock-add-keywords
    nil (mapcar (lambda (kw)
                  (cons (rackton-repl--matcher-where (car kw) #'rackton-repl--code-at-p)
@@ -210,6 +279,14 @@ type-name rule to error type detail."
   (font-lock-add-keywords
    nil `((,(rackton-repl--matcher-where rackton--type-name-regexp
                                         #'rackton-repl--type-detail-at-p)
+          0 'font-lock-type-face)))
+  ;; The ,type/,accepts/,search/,info replies carry type expressions —
+  ;; the schemes right of `::', their wrapped continuations, and ,info's
+  ;; bare instance/superprotocol heads.  Like the error type detail,
+  ;; every capitalized name there is a type.
+  (font-lock-add-keywords
+   nil `((,(rackton-repl--matcher-where rackton--type-name-regexp
+                                        #'rackton-repl--reply-type-at-p)
           0 'font-lock-type-face)))
   ;; Error first lines and labels are output, so they sidestep the
   ;; wrapping above and are highlighted wherever they appear.

@@ -152,14 +152,18 @@ keywords must not fontify it; input on the same buffer still must."
     ;; An input form the user typed (field nil, as comint leaves input).
     (insert "\n(define (eff x) (Some x))")
     (font-lock-ensure)
-    ;; The output words must carry no code faces.
+    ;; The banner prose must carry no code faces: the header name and
+    ;; the (class) annotation are not Rackton code.
     (goto-char (point-min))
     (search-forward "Contravariant")
     (should-not (get-text-property (match-beginning 0) 'face))
     (search-forward "class")
     (should-not (get-text-property (match-beginning 0) 'face))
+    ;; `All', however, sits after `::' — the reply's type region — so it
+    ;; is a type, not prose (see the reply-type tests below).
     (search-forward "All")
-    (should-not (get-text-property (match-beginning 0) 'face))
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))
     ;; The input form is still highlighted as before.
     (search-forward "define")
     (should (eq (get-text-property (match-beginning 0) 'face)
@@ -167,6 +171,97 @@ keywords must not fontify it; input on the same buffer still must."
     (search-forward "Some")
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'rackton-constructor-face))))
+
+(ert-deftest rackton-repl-fontifies-reply-types-after-double-colon ()
+  "The type to the right of `::' in a ,type/,accepts/,search reply is a
+type expression; the head name to its left is not."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "3 :: Integer\n"
+                     "abs :: (All (a) ((Num a) => (-> a a)))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "Integer")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))
+    (search-forward "Num")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))))
+
+(ert-deftest rackton-repl-keeps-reply-constructor-head-unhighlighted ()
+  "A ,info constructor line lists `Name :: scheme'; the capitalized type
+in the scheme is a type, but the constructor head left of `::' is not."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize "    None :: (All (a) (Maybe a))\n" 'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "None")
+    (should-not (eq (get-text-property (match-beginning 0) 'face)
+                    'font-lock-type-face))
+    (search-forward "Maybe")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))))
+
+(ert-deftest rackton-repl-fontifies-info-instance-heads ()
+  "The bare type-level heads of a ,info reply — instance/implements and
+superprotocol heads with no `::' — are type expressions."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "  superprotocols: (Applicative m)\n"
+                     "  implements:\n"
+                     "    (Monad Maybe)\n"
+                     "    (Functor Maybe)\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "Applicative")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))
+    (search-forward "Monad")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))
+    (search-forward "Functor")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))))
+
+(ert-deftest rackton-repl-fontifies-wrapped-reply-type-continuation ()
+  "A long scheme wraps onto hanging continuation lines; the type names on
+those continuations are still types."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "    flatmap\n"
+                     "       :: (All\n"
+                     "         (m a b)\n"
+                     "         ((Monad m) => (-> (-> a (m b)) (m a) (m b))))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "Monad")             ; on a continuation line
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))))
+
+(ert-deftest rackton-repl-leaves-info-labels-and-laws-unhighlighted ()
+  "A ,info law body is Rackton code, not a type list, so its head is not
+read as a type; prose labels stay plain."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "  laws:\n"
+                     "    left-identity:\n"
+                     "      ((Eq (m Integer))\n")
+             'field 'output))
+    (font-lock-ensure)
+    ;; The law body line begins `((Eq …' — `((' excludes it from the
+    ;; instance-head rule, so `Eq' is not mass-highlighted as a type.
+    (goto-char (point-min))
+    (search-forward "Eq")
+    (should-not (eq (get-text-property (match-beginning 0) 'face)
+                    'font-lock-type-face))))
 
 (ert-deftest rackton-repl-submitted-input-keeps-fontification ()
   (rackton-test--ensure-repl)
@@ -405,8 +500,10 @@ after in:, a constructor application stays a constructor."
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'rackton-repl-error-label-face))))
 
-(ert-deftest rackton-repl-noninerror-output-stays-plain ()
-  "Indented non-error output (a ,info reply) is still not fontified."
+(ert-deftest rackton-repl-noninerror-output-prose-stays-plain ()
+  "Indented non-error output (a ,info reply) keeps its prose plain: the
+header name and method head are not code.  The type after `::', though,
+is now a type (see the reply-type tests)."
   (with-temp-buffer
     (inferior-rackton-mode)
     (insert (propertize
@@ -414,9 +511,16 @@ after in:, a constructor application stays a constructor."
                      "    contramap :: (-> (Predicate a))\n")
              'field 'output))
     (font-lock-ensure)
+    ;; The header name and the lowercase method head are prose.
     (goto-char (point-min))
+    (search-forward "Contravariant")
+    (should-not (get-text-property (match-beginning 0) 'face))
+    (search-forward "contramap")
+    (should-not (get-text-property (match-beginning 0) 'face))
+    ;; The type right of `::' is a type.
     (search-forward "Predicate")
-    (should-not (get-text-property (match-beginning 0) 'face))))
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))))
 
 ;;; History navigation
 
