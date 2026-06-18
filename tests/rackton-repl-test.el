@@ -321,6 +321,50 @@ read as a type; prose labels stay plain."
       ;; `face' property wherever font-lock is live.
       (should-not (get-text-property pos 'font-lock-face)))))
 
+;;; Unit: type query fallback
+
+(ert-deftest rackton-repl-single-identifier-p-recognizes-bare-names ()
+  "A bare name is an identifier; compound or empty input is not."
+  (should (rackton-repl--single-identifier-p "get-st"))
+  (should (rackton-repl--single-identifier-p "  get-st  ")) ; trimmed
+  (should-not (rackton-repl--single-identifier-p "(foo bar)"))
+  (should-not (rackton-repl--single-identifier-p "foo bar"))
+  (should-not (rackton-repl--single-identifier-p ""))
+  (should-not (rackton-repl--single-identifier-p nil)))
+
+(defun rackton-test--stub-query (replies)
+  "A `rackton-repl-query' stub returning REPLIES keyed by command head.
+REPLIES maps a meta-command string like \",type\" to its reply."
+  (lambda (input &rest _)
+    (let ((head (car (split-string input))))
+      (or (cdr (assoc head replies))
+          (error "Unexpected query: %s" input)))))
+
+(ert-deftest rackton-repl-type-or-scheme-passes-through-a-type ()
+  "When `,type' yields a type, it is returned and `,info' is not asked."
+  (cl-letf (((symbol-function 'rackton-repl-query)
+             (rackton-test--stub-query
+              ;; ,info deliberately errors: reaching it would fail the test.
+              '((",type" . "foo :: Integer")))))
+    (should (equal (rackton-repl--type-or-scheme "foo") "foo :: Integer"))))
+
+(ert-deftest rackton-repl-type-or-scheme-falls-back-for-identifiers ()
+  "An identifier whose `,type' has no type falls back to the `,info' scheme."
+  (cl-letf (((symbol-function 'rackton-repl-query)
+             (rackton-test--stub-query
+              '((",type" . "error: infer: ambiguous use of get-st")
+                (",info" . "get-st :: (All (s m) ((MonadState s m) => (m s)))")))))
+    (should (equal (rackton-repl--type-or-scheme "get-st")
+                   "get-st :: (All (s m) ((MonadState s m) => (m s)))"))))
+
+(ert-deftest rackton-repl-type-or-scheme-no-fallback-for-compound ()
+  "A compound expression keeps the `,type' error; `,info' is not asked."
+  (cl-letf (((symbol-function 'rackton-repl-query)
+             (rackton-test--stub-query
+              '((",type" . "error: infer: ambiguous")))))
+    (should (string-prefix-p "error:"
+                             (rackton-repl--type-or-scheme "(get-st x)")))))
+
 (ert-deftest rackton-repl-eldoc-defers-to-eglot ()
   "With eglot managing the buffer, the REPL eldoc stays silent so the
 LSP server's hover is the single source of type-at-point."

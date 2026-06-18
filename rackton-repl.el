@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.30
+;; Version: 0.4.31
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -658,11 +658,32 @@ forms, not module headers."
     (special-mode)
     (display-buffer (current-buffer))))
 
+(defun rackton-repl--single-identifier-p (expr)
+  "Non-nil when EXPR is one bare identifier (no whitespace or parens)."
+  (let ((s (string-trim (or expr ""))))
+    (and (> (length s) 0)
+         (not (string-match-p "[ \t\n()]" s)))))
+
+(defun rackton-repl--type-or-scheme (expr &optional timeout)
+  "The `,type' reply for EXPR, else the `,info' declared scheme.
+A bare identifier whose `,type' yields no type falls back to `,info':
+a polymorphic, class-constrained binding (say `get-st', whose scheme is
+\(All (s m) ((MonadState s m) => (m s)))) cannot be inferred at an
+isolated call site, so its declared scheme is the type to show.  A
+compound expression keeps its `,type' reply, error and all."
+  (let ((reply (rackton-repl-query (concat ",type " expr) timeout)))
+    (if (and (not (string-match-p "::" reply))
+             (rackton-repl--single-identifier-p expr))
+        (rackton-repl-query (concat ",info " expr) timeout)
+      reply)))
+
 (defun rackton-type (expr)
   "Show the inferred type of EXPR without evaluating it.
-Interactively, EXPR is the region when active, else the sexp at point."
+Interactively, EXPR is the region when active, else the sexp at point.
+A bare identifier whose type cannot be inferred in isolation falls back
+to its declared scheme (see `rackton-repl--type-or-scheme')."
   (interactive (list (rackton-repl--expr-for-query "Type of: ")))
-  (message "%s" (rackton-repl-query (concat ",type " expr))))
+  (message "%s" (rackton-repl--type-or-scheme expr)))
 
 (defun rackton-describe-symbol (name)
   "Describe NAME — its scheme, class methods, or constructors."
@@ -730,8 +751,11 @@ are gone."
 ;;; Layer 3: eldoc
 
 (defun rackton-repl--type-of (name)
-  "NAME's type per the REPL, or the symbol `none'."
-  (let ((reply (rackton-repl-query (concat ",type " name) 2)))
+  "NAME's type per the REPL, or the symbol `none'.
+Falls back to NAME's declared scheme when its type cannot be inferred
+in isolation, so eldoc reports a polymorphic binding rather than going
+silent (see `rackton-repl--type-or-scheme')."
+  (let ((reply (rackton-repl--type-or-scheme name 2)))
     (if (string-match-p "::" reply) reply 'none)))
 
 (defun rackton-repl-eldoc (callback &rest _)
