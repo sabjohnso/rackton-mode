@@ -1,7 +1,7 @@
 ;;; rackton-search.el --- Signature search for Rackton  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.18
+;; Version: 0.4.19
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, tools
 
@@ -162,6 +162,24 @@ PATTERN is a type pattern, e.g. (-> (List a) Integer)."
 (define-key rackton-mode-map (kbd "C-c C-f r") #'rackton-search-returns)
 (define-key rackton-mode-map (kbd "C-c C-f a") #'rackton-search-accepts)
 (define-key rackton-mode-map (kbd "C-c C-f n") #'rackton-search-name)
+
+;;; Menu items layered onto the Rackton menu
+;;
+;; The stdlib searches this file owns, gathered under "Search" ahead of
+;; the base "Go to Definition…" item.  Session-aware search lives with
+;; the REPL layer that defines it (see rackton-repl.el).
+
+(easy-menu-add-item rackton-mode-map '(menu-bar "Rackton")
+  '("Search"
+    ["By Signature…" rackton-search
+     :help "Search the standard library by signature"]
+    ["By Return Type…" rackton-search-returns
+     :help "Search the standard library by return type"]
+    ["By Argument Type…" rackton-search-accepts
+     :help "Search the standard library by argument type"]
+    ["By Name…" rackton-search-name
+     :help "Search the standard library by name"])
+  "Go to Definition…")
 
 (provide 'rackton-search)
 ;;; rackton-search.el ends here

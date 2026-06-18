@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.18
+;; Version: 0.4.19
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -27,6 +27,7 @@
 
 (require 'scheme)
 (require 'imenu)
+(require 'easymenu)
 
 (defgroup rackton nil
   "Editing Rackton code."
@@ -442,6 +443,20 @@ language itself."
     (setf (nth 2 defaults) nil)
     (setq-local font-lock-defaults defaults))
   (font-lock-add-keywords nil rackton-font-lock-keywords))
+
+;;; Menu
+;;
+;; The base menu carries only what this layer owns: navigation by the
+;; imenu index built above.  The optional REPL and search layers add
+;; their own items ahead of "Go to Definition…" (see the
+;; `easy-menu-add-item' calls in rackton-repl.el and rackton-search.el),
+;; mirroring how each layer binds its own keys into `rackton-mode-map'.
+
+(easy-menu-define rackton-mode-menu rackton-mode-map
+  "Menu for `rackton-mode'."
+  '("Rackton"
+    ["Go to Definition…" imenu
+     :help "Jump to a definition via the imenu index"]))
 
 ;;;###autoload
 (add-to-list 'magic-mode-alist

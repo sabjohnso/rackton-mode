@@ -46,6 +46,37 @@
   "Assert that CODE is exactly what rackton-mode reindents it to."
   `(should (equal (rackton-test--reindent ,code) ,code)))
 
+(defun rackton-test--rackton-menu ()
+  "The \"Rackton\" menu keymap from `rackton-mode-map', or nil.
+Found by display name so the test does not depend on the event
+symbol easy-menu derives from it."
+  (let ((menubar (lookup-key rackton-mode-map [menu-bar]))
+        found)
+    (when (keymapp menubar)
+      (map-keymap
+       (lambda (_event binding)
+         (when (and (not found)
+                    (eq (car-safe binding) 'menu-item)
+                    (equal (nth 1 binding) "Rackton"))
+           (setq found (nth 2 binding))))
+       menubar))
+    found))
+
+(defun rackton-test--menu-commands (keymap)
+  "All command symbols reachable in menu KEYMAP, descending submenus."
+  (let (cmds)
+    (map-keymap
+     (lambda (_event binding)
+       (let ((def (cond ((eq (car-safe binding) 'menu-item) (nth 2 binding))
+                        ((consp binding) (cdr binding))
+                        (t binding))))
+         (cond ((keymapp def)
+                (setq cmds (append (rackton-test--menu-commands def) cmds)))
+               ((commandp def)
+                (push def cmds)))))
+     keymap)
+    cmds))
+
 ;;; Mode selection
 
 (ert-deftest rackton-mode-derives-from-scheme-mode ()
@@ -344,6 +375,17 @@ INDEX is bound to the index alist; point may be moved freely."
     ;; the (: ...) signature adds no second "foo" entry
     (should (= 1 (length (seq-filter (lambda (e) (equal (car e) "foo"))
                                      index))))))
+
+;;; menu
+
+(ert-deftest rackton-mode-defines-menu ()
+  "`rackton-mode-map' carries a \"Rackton\" menu-bar menu."
+  (should (keymapp (rackton-test--rackton-menu))))
+
+(ert-deftest rackton-mode-menu-offers-imenu-navigation ()
+  "The base menu offers imenu-based navigation."
+  (should (memq 'imenu
+                (rackton-test--menu-commands (rackton-test--rackton-menu)))))
 
 (provide 'rackton-mode-test)
 ;;; rackton-mode-test.el ends here

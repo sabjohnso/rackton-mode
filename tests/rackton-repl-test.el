@@ -981,5 +981,28 @@ is now a type (see the reply-type tests)."
       (should reported)
       (should (string-match-p "::" reported)))))
 
+;;; menu
+
+(ert-deftest rackton-repl-menu-offers-eval-commands ()
+  "The Rackton menu offers the evaluation commands."
+  (let ((cmds (rackton-test--menu-commands (rackton-test--rackton-menu))))
+    (dolist (c '(rackton-eval-last-sexp rackton-eval-defun
+                 rackton-send-region rackton-eval-buffer))
+      (should (memq c cmds)))))
+
+(ert-deftest rackton-repl-menu-offers-inspect-commands ()
+  "The Rackton menu offers the type/describe/source/accepts commands."
+  (let ((cmds (rackton-test--menu-commands (rackton-test--rackton-menu))))
+    (dolist (c '(rackton-type rackton-describe-symbol
+                 rackton-show-source rackton-accepts))
+      (should (memq c cmds)))))
+
+(ert-deftest rackton-repl-menu-offers-repl-commands ()
+  "The Rackton menu offers REPL control, including session search."
+  (let ((cmds (rackton-test--menu-commands (rackton-test--rackton-menu))))
+    (dolist (c '(rackton-repl rackton-repl-clear-buffer rackton-repl-reset
+                 rackton-repl-search rackton-repl-returns))
+      (should (memq c cmds)))))
+
 (provide 'rackton-repl-test)
 ;;; rackton-repl-test.el ends here

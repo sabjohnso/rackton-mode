@@ -62,5 +62,15 @@
   (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f a")) 'rackton-search-accepts))
   (should (eq (lookup-key rackton-mode-map (kbd "C-c C-f n")) 'rackton-search-name)))
 
+;;; menu
+
+(ert-deftest rackton-search-menu-offers-stdlib-searches ()
+  "The Rackton menu offers the four stdlib signature searches."
+  (require 'rackton-mode)
+  (let ((cmds (rackton-test--menu-commands (rackton-test--rackton-menu))))
+    (dolist (c '(rackton-search rackton-search-returns
+                 rackton-search-accepts rackton-search-name))
+      (should (memq c cmds)))))
+
 (provide 'rackton-search-test)
 ;;; rackton-search-test.el ends here

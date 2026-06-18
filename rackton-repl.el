@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.29
+;; Version: 0.4.30
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -808,6 +808,46 @@ Appended, so eglot's LSP completion (when present) is consulted first."
 (define-key inferior-rackton-mode-map (kbd "C-c M-o") #'rackton-repl-clear-buffer)
 (define-key rackton-mode-map (kbd "C-c M-r") #'rackton-repl-reset)
 (define-key inferior-rackton-mode-map (kbd "C-c M-r") #'rackton-repl-reset)
+
+;;; Menu items layered onto the Rackton menu
+;;
+;; This layer's submenus sit ahead of the base "Go to Definition…"
+;; item, so they appear in load order above it regardless of which
+;; optional layers are present.  Session search lives under REPL: it is
+;; a feature of the live session, and keeping it here means every
+;; command appears in the submenu owned by the file that defines it.
+
+(easy-menu-add-item rackton-mode-map '(menu-bar "Rackton")
+  '("Evaluate"
+    ["Last Sexp" rackton-eval-last-sexp :help "Evaluate the sexp before point"]
+    ["Defun" rackton-eval-defun :help "Evaluate the top-level form at point"]
+    ["Region" rackton-send-region :enable mark-active
+     :help "Evaluate the region"]
+    ["Buffer" rackton-eval-buffer :help "Evaluate the whole buffer"])
+  "Go to Definition…")
+
+(easy-menu-add-item rackton-mode-map '(menu-bar "Rackton")
+  '("Inspect"
+    ["Type" rackton-type :help "Show the type of the symbol at point"]
+    ["Describe Symbol" rackton-describe-symbol
+     :help "Describe the symbol at point"]
+    ["Show Source" rackton-show-source
+     :help "Visit the source of the symbol at point"]
+    ["Accepts" rackton-accepts
+     :help "Show what the symbol at point accepts"])
+  "Go to Definition…")
+
+(easy-menu-add-item rackton-mode-map '(menu-bar "Rackton")
+  '("REPL"
+    ["Start / Switch to REPL" rackton-repl :help "Start or switch to the REPL"]
+    ["Clear REPL" rackton-repl-clear-buffer :help "Clear the REPL buffer"]
+    ["Reset REPL" rackton-repl-reset :help "Restart the REPL process"]
+    "--"
+    ["Search Signature (session)" rackton-repl-search
+     :help "Search the live session by signature"]
+    ["Search Returns (session)" rackton-repl-returns
+     :help "Search the live session by return type"])
+  "Go to Definition…")
 
 (provide 'rackton-repl)
 ;;; rackton-repl.el ends here
