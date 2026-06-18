@@ -56,6 +56,31 @@
     (inferior-rackton-mode)
     (should (derived-mode-p 'comint-mode))))
 
+(ert-deftest rackton-repl-restart-preserves-minor-modes ()
+  "Restarting a killed REPL reuses its buffer without re-running the
+major mode, so a minor mode the user turned on (e.g. paredit) is not
+swept away by `kill-all-local-variables'."
+  (let ((buf (get-buffer-create rackton-repl--buffer-name)))
+    (unwind-protect
+        (progn
+          ;; The buffer a `,q' leaves behind: set up as a REPL, no process,
+          ;; with a buffer-local minor mode the user enabled by some means
+          ;; other than the mode hook.
+          (with-current-buffer buf
+            (inferior-rackton-mode)
+            (visual-line-mode 1))
+          ;; Stub the subprocess machinery so the restart needs no Racket.
+          (cl-letf (((symbol-function 'make-comint-in-buffer)
+                     (lambda (&rest _) buf))
+                    ((symbol-function 'rackton-repl--wait-for-prompt)
+                     #'ignore))
+            (rackton-repl--ensure))
+          (with-current-buffer buf
+            (should (derived-mode-p 'inferior-rackton-mode))
+            (should (bound-and-true-p visual-line-mode))))
+      (let ((kill-buffer-query-functions nil))
+        (kill-buffer buf)))))
+
 (ert-deftest rackton-repl-prompt-regexp-matches-prompt ()
   (should (string-match rackton-repl-prompt-regexp "λ> "))
   (should-not (string-match rackton-repl-prompt-regexp "lambda> ")))

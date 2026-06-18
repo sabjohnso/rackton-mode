@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.28
+;; Version: 0.4.29
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -511,8 +511,14 @@ parse."
             (process-environment (cons "NO_COLOR=1" process-environment)))
         (apply #'make-comint-in-buffer "rackton-repl" buf
                rackton-program nil rackton-repl-arguments))
+      ;; Install the major mode only on a fresh buffer.  A killed REPL
+      ;; (,q) leaves its buffer alive and fully set up; restarting it
+      ;; reuses that buffer.  Re-running the mode there would call
+      ;; `kill-all-local-variables', silently disabling any minor mode
+      ;; the user had on (paredit) and duplicating the font-lock rules.
       (with-current-buffer buf
-        (inferior-rackton-mode))
+        (unless (derived-mode-p 'inferior-rackton-mode)
+          (inferior-rackton-mode)))
       (rackton-repl--wait-for-prompt (get-buffer-process buf) 30))
     buf))
 
