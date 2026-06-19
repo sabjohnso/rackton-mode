@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.31
+;; Version: 0.4.32
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -685,6 +685,39 @@ to its declared scheme (see `rackton-repl--type-or-scheme')."
   (interactive (list (rackton-repl--expr-for-query "Type of: ")))
   (message "%s" (rackton-repl--type-or-scheme expr)))
 
+(defun rackton-repl--type-from-reply (reply)
+  "The type expression in a `name :: type' REPL REPLY, or nil.
+Everything right of the first `::', with whitespace collapsed, so a
+wrapped multi-line scheme reads as the single type an annotation needs.
+A reply with no `::' (an error, say) yields nil."
+  (when (string-match "::" reply)
+    (let ((type (rackton--collapse-whitespace (substring reply (match-end 0)))))
+      (unless (string-empty-p type)
+        type))))
+
+(defun rackton-annotate-definition ()
+  "Insert or correct the type annotation for the define name at point.
+Point must be on the name a `define' form binds.  The REPL is asked for
+that name's type and a `(: name type)' signature is kept just above the
+define: it is inserted when absent, rewritten when its type disagrees
+with the REPL, and left untouched when it already agrees.
+
+The REPL must already know the binding, so evaluate the define
+\(\\[rackton-eval-defun]) first; otherwise there is no type to read."
+  (interactive)
+  (let* ((open (rackton--enclosing-define))
+         (bounds (and open (rackton--form-name-bounds open))))
+    (unless (and bounds (<= (car bounds) (point)) (<= (point) (cdr bounds)))
+      (user-error "Point is not on a `define'd name"))
+    (let* ((name (buffer-substring-no-properties (car bounds) (cdr bounds)))
+           (type (rackton-repl--type-from-reply
+                  (rackton-repl--type-or-scheme name))))
+      (unless type
+        (user-error "The REPL reports no type for `%s' (evaluate it first?)"
+                    name))
+      (message "Annotation %s for `%s'"
+               (rackton--ensure-annotation open name type) name))))
+
 (defun rackton-describe-symbol (name)
   "Describe NAME — its scheme, class methods, or constructors."
   (interactive (list (or (thing-at-point 'symbol t)
@@ -821,6 +854,7 @@ Appended, so eglot's LSP completion (when present) is consulted first."
 (define-key rackton-mode-map (kbd "C-c C-r") #'rackton-send-region)
 (define-key rackton-mode-map (kbd "C-c C-k") #'rackton-eval-buffer)
 (define-key rackton-mode-map (kbd "C-c C-t") #'rackton-type)
+(define-key rackton-mode-map (kbd "C-c :") #'rackton-annotate-definition)
 (define-key rackton-mode-map (kbd "C-c C-d") #'rackton-describe-symbol)
 (define-key rackton-mode-map (kbd "C-c C-s") #'rackton-show-source)
 (define-key rackton-mode-map (kbd "C-c C-a") #'rackton-accepts)
@@ -858,7 +892,10 @@ Appended, so eglot's LSP completion (when present) is consulted first."
     ["Show Source" rackton-show-source
      :help "Visit the source of the symbol at point"]
     ["Accepts" rackton-accepts
-     :help "Show what the symbol at point accepts"])
+     :help "Show what the symbol at point accepts"]
+    "--"
+    ["Annotate Definition" rackton-annotate-definition
+     :help "Insert or correct the type signature for the define at point"])
   "Go to Definition…")
 
 (easy-menu-add-item rackton-mode-map '(menu-bar "Rackton")

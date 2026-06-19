@@ -58,6 +58,7 @@ comint buffer. From any `rackton-mode` buffer:
 | `C-c C-r` | `rackton-send-region`     | send each top-level form in the region     |
 | `C-c C-k` | `rackton-eval-buffer`     | send the whole buffer (skips `#lang` line) |
 | `C-c C-t` | `rackton-type`            | show the inferred type (`,type`)           |
+| `C-c :`   | `rackton-annotate-definition` | insert or correct the `(: name type)` signature for the define at point |
 | `C-c C-d` | `rackton-describe-symbol` | describe a binding (`,info`)               |
 | `C-c C-s` | `rackton-show-source`     | show the form that bound a name (`,source`)|
 | `C-c C-a` | `rackton-accepts`         | search by accepted argument type (`,accepts`) |

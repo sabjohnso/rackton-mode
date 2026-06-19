@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.20
+;; Version: 0.4.21
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -362,19 +362,26 @@ INDENT-POINT and STATE are as for `lisp-indent-function'."
 (defconst rackton--imenu-class-heads '(class protocol)
   "Definition forms grouped under the imenu \"Classes\" submenu.")
 
-(defun rackton--imenu-form-name (open)
-  "The name the form at OPEN binds, as a string, or nil.
+(defun rackton--form-name-bounds (open)
+  "Buffer bounds (BEG . END) of the name the form at OPEN binds, or nil.
 The name is the first symbol of element 1, so both (define (f x) …)
 and (define f …) — and the parenthesised heads of `data', `class',
-etc. — resolve to the same place.  Read as buffer text rather than
-interned: definition names are arbitrary identifiers, most of which
-are not symbols in the obarray, so `intern-soft' would miss them."
+etc., and a (: name …) signature — resolve to the same token."
   (let ((e1 (rackton--element-start open 1)))
     (when e1
       (save-excursion
         (goto-char (if (eq (char-after e1) ?\() (1+ e1) e1))
         (when (looking-at "\\(?:\\sw\\|\\s_\\)+")
-          (match-string-no-properties 0))))))
+          (cons (match-beginning 0) (match-end 0)))))))
+
+(defun rackton--form-bound-name (open)
+  "The name the form at OPEN binds, as a string, or nil.
+Read as buffer text rather than interned: definition names are
+arbitrary identifiers, most of which are not symbols in the obarray, so
+`intern-soft' would miss them.  See `rackton--form-name-bounds'."
+  (let ((bounds (rackton--form-name-bounds open)))
+    (when bounds
+      (buffer-substring-no-properties (car bounds) (cdr bounds)))))
 
 (defun rackton--imenu-instance-label (open)
   "Label for the `instance' form at OPEN — its head with parens trimmed.
@@ -408,13 +415,13 @@ indexed, so nested definitions are left out."
               (let ((head (rackton--symbol-at (1+ open))))
                 (cond
                  ((eq head 'define)
-                  (when-let ((name (rackton--imenu-form-name open)))
+                  (when-let ((name (rackton--form-bound-name open)))
                     (push (cons name open) functions)))
                  ((memq head rackton--imenu-type-heads)
-                  (when-let ((name (rackton--imenu-form-name open)))
+                  (when-let ((name (rackton--form-bound-name open)))
                     (push (cons name open) types)))
                  ((memq head rackton--imenu-class-heads)
-                  (when-let ((name (rackton--imenu-form-name open)))
+                  (when-let ((name (rackton--form-bound-name open)))
                     (push (cons name open) classes)))
                  ((eq head 'instance)
                   (when-let ((label (rackton--imenu-instance-label open)))
@@ -423,6 +430,85 @@ indexed, so nested definitions are left out."
             (when types     (list (cons "Types" (nreverse types))))
             (when classes   (list (cons "Classes" (nreverse classes))))
             (when instances (list (cons "Instances" (nreverse instances)))))))
+
+;;; Type annotations
+;;
+;; A definition's type signature is a sibling `(: name type)' form
+;; sitting just above its `define'.  These helpers — pure source
+;; structure, no type checker — locate the define enclosing point, read
+;; an existing signature, and write one.  The type they place is the
+;; caller's to supply (the REPL command in rackton-repl.el infers it),
+;; so the editing stays testable on its own.
+
+(defun rackton--enclosing-define (&optional pos)
+  "Open-paren position of the nearest `define' form enclosing POS, or nil.
+POS defaults to point.  Only the exact `define' head matches, not its
+relatives (`define-alias', `define-effect', …)."
+  (let ((open nil))
+    ;; `nth 9' lists enclosing opens outermost-first; the last `define'
+    ;; seen is therefore the innermost one enclosing POS.
+    (dolist (o (nth 9 (syntax-ppss pos)) open)
+      (when (eq (rackton--symbol-at (1+ o)) 'define)
+        (setq open o)))))
+
+(defun rackton--collapse-whitespace (string)
+  "STRING with runs of whitespace collapsed to one space, trimmed.
+So two type expressions are compared on structure, not on the line
+breaks and indentation a printer or an author happened to use."
+  (string-trim (replace-regexp-in-string "[ \t\n]+" " " string)))
+
+(defun rackton--signature-type (open)
+  "The type expression of the `(: name type)' signature at OPEN, normalized.
+That is element 2 (the type), with whitespace collapsed; nil when the
+form has no such element."
+  (let ((type-start (rackton--element-start open 2)))
+    (when type-start
+      (rackton--collapse-whitespace
+       (buffer-substring-no-properties type-start
+                                       (scan-sexps type-start 1))))))
+
+(defun rackton--preceding-signature (open name)
+  "Bounds (BEG . END) of NAME's `(:' signature just above the define at OPEN.
+The signature is the sibling form immediately preceding OPEN; the
+result is nil unless that form is `(: NAME …)'.  BEG is its open paren,
+END the position just after its close paren."
+  (save-excursion
+    (goto-char open)
+    (condition-case nil
+        (let ((sig-open (progn (backward-sexp 1) (point))))
+          (when (and (eq (char-after sig-open) ?\()
+                     (eq (rackton--symbol-at (1+ sig-open)) ':)
+                     (equal (rackton--form-bound-name sig-open) name))
+            (cons sig-open (scan-sexps sig-open 1))))
+      (scan-error nil))))
+
+(defun rackton--ensure-annotation (open name type)
+  "Make NAME's signature above the define at OPEN read `(: NAME TYPE)'.
+Insert the signature when absent, rewrite it when its type differs from
+TYPE, and leave it untouched when it already agrees (whitespace aside).
+Return `inserted', `updated', or `unchanged'."
+  (let ((sig (rackton--preceding-signature open name))
+        (desired (format "(: %s %s)" name type)))
+    (cond
+     ((null sig)
+      (save-excursion
+        ;; Insert at OPEN, then re-create the define's indentation after
+        ;; the newline, so the signature lands on its own line above and
+        ;; the define keeps its column.
+        (let ((indent (make-string (progn (goto-char open) (current-column))
+                                   ?\s)))
+          (goto-char open)
+          (insert desired "\n" indent)))
+      'inserted)
+     ((equal (rackton--signature-type (car sig))
+             (rackton--collapse-whitespace type))
+      'unchanged)
+     (t
+      (save-excursion
+        (delete-region (car sig) (cdr sig))
+        (goto-char (car sig))
+        (insert desired))
+      'updated))))
 
 ;;; Mode
 
