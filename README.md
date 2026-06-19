@@ -5,7 +5,9 @@ functional language (in the style of Coalton) embedded in Racket.
 
 ## Features
 
-- Automatic mode selection for files beginning with `#lang rackton`.
+- Automatic mode selection for files beginning with `#lang rackton`. A
+  new, empty `.rkt` file opens in the `.rkt` default mode, then switches
+  to `rackton-mode` as soon as you type its `#lang rackton` line.
 - Font-lock for Rackton's surface forms (`data`, `class`, `instance`,
   `match`, `do`, …), module import/export forms and their spec
   introducers, and `(: name type)` signatures.

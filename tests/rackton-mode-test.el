@@ -97,6 +97,64 @@ symbol easy-menu derives from it."
     (set-auto-mode)
     (should-not (eq major-mode 'rackton-mode))))
 
+;;; Mode selection: switching once the lang line is typed
+;;
+;; A new, empty .rkt file opens in another mode (the .rkt default) before
+;; its `#lang' line exists.  `rackton--enable-on-lang-line' upgrades it
+;; once that line reads `#lang rackton'.
+
+(ert-deftest rackton-enable-switches-on-lang-line ()
+  "A non-rackton buffer whose first line is `#lang rackton' switches."
+  (with-temp-buffer
+    (scheme-mode)
+    (insert "#lang rackton\n(provide (data-out T))\n")
+    (rackton--enable-on-lang-line)
+    (should (derived-mode-p 'rackton-mode))))
+
+(ert-deftest rackton-enable-leaves-other-langs ()
+  "A different `#lang' line is left in its original mode."
+  (with-temp-buffer
+    (scheme-mode)
+    (insert "#lang racket/base\n(define (f x) x)\n")
+    (rackton--enable-on-lang-line)
+    (should (eq major-mode 'scheme-mode))))
+
+(ert-deftest rackton-enable-noop-when-already-rackton ()
+  "Already in `rackton-mode', the check does nothing untoward."
+  (with-temp-buffer
+    (insert "#lang rackton\n")
+    (rackton-mode)
+    (rackton--enable-on-lang-line)
+    (should (derived-mode-p 'rackton-mode))))
+
+(ert-deftest rackton-watch-switches-as-lang-line-is-typed ()
+  "Typing the `#lang rackton' line into a watched .rkt buffer switches it.
+Mimics `find-file-hook': set a .rkt name, land in scheme-mode, install
+the watcher, then type the line a character at a time (each through
+`self-insert-command', which runs `post-self-insert-hook')."
+  (with-temp-buffer
+    (setq buffer-file-name (expand-file-name "scratch-new.rkt"
+                                             temporary-file-directory))
+    (unwind-protect
+        (progn
+          (scheme-mode)
+          (rackton--watch-lang-line)
+          (should (eq major-mode 'scheme-mode)) ; empty file: not yet rackton
+          (dolist (ch (append "#lang rackton" nil))
+            (setq last-command-event ch)
+            (self-insert-command 1))
+          (should (derived-mode-p 'rackton-mode)))
+      (set-buffer-modified-p nil))))
+
+(ert-deftest rackton-watch-skips-non-rkt-files ()
+  "The watcher installs nothing for a non-.rkt buffer."
+  (with-temp-buffer
+    (setq buffer-file-name (expand-file-name "notes.txt"
+                                             temporary-file-directory))
+    (scheme-mode)
+    (rackton--watch-lang-line)
+    (should-not (memq #'rackton--enable-on-lang-line post-self-insert-hook))))
+
 ;;; Font-lock
 
 (ert-deftest rackton-mode-fontifies-data-keyword ()

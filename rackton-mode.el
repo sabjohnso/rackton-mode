@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.22
+;; Version: 0.4.23
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -605,6 +605,43 @@ language itself."
 ;;;###autoload
 (add-to-list 'magic-mode-alist
              '("\\`#lang rackton\\(?:[[:space:]]\\|$\\)" . rackton-mode))
+
+;; A file already starting with `#lang rackton' is recognized at open
+;; time by the `magic-mode-alist' entry above.  A *new* .rkt file is
+;; empty when first visited, so it opens in the .rkt default mode (often
+;; `scheme-mode') before its `#lang' line is typed.  The watcher below
+;; upgrades such a buffer once the line is written.
+
+(defconst rackton--lang-line-regexp "\\`#lang rackton\\(?:[[:space:]]\\|$\\)"
+  "Match a buffer beginning with a `#lang rackton' line.
+Kept identical to the `magic-mode-alist' entry above; that entry holds
+its own literal because the autoload cookie copies it verbatim, before
+this constant exists.")
+
+(defun rackton--enable-on-lang-line ()
+  "Switch to `rackton-mode' when the first line reads `#lang rackton'.
+A no-op once already in `rackton-mode', or when the first line is some
+other `#lang'.  Turning the mode on kills buffer-local variables, so a
+watcher installed by `rackton--watch-lang-line' removes itself here."
+  (when (and (not (derived-mode-p 'rackton-mode))
+             (save-excursion
+               (goto-char (point-min))
+               (looking-at-p rackton--lang-line-regexp)))
+    (rackton-mode)))
+
+(defun rackton--watch-lang-line ()
+  "Watch a .rkt buffer that opened in another mode for a `#lang rackton' line.
+For `find-file-hook': on a `.rkt' file not already in `rackton-mode',
+re-check the first line after each self-inserted character so typing the
+`#lang rackton' line into a fresh file switches the mode (see
+`rackton--enable-on-lang-line')."
+  (when (and buffer-file-name
+             (string-suffix-p ".rkt" buffer-file-name)
+             (not (derived-mode-p 'rackton-mode)))
+    (add-hook 'post-self-insert-hook #'rackton--enable-on-lang-line nil t)))
+
+;;;###autoload
+(add-hook 'find-file-hook #'rackton--watch-lang-line)
 
 (provide 'rackton-mode)
 ;;; rackton-mode.el ends here
