@@ -219,6 +219,40 @@ bare type-level heads.  Error detail keeps its own path
              (rackton-repl--type-head-line-p pos)
              (rackton-repl--wrapped-type-line-p pos)))))
 
+;; A ,info reply on a sum type lists its data constructors as
+;; `<indent>Name :: <scheme>' lines under a `constructors:' label.  The
+;; head left of `::' there names a data constructor — unlike the
+;; identical method lines a protocol's `methods:' label carries, which
+;; name functions.  So the head gets the constructor face only when its
+;; enclosing label is `constructors:'.
+
+(defun rackton-repl--constructor-line-p (pos)
+  "Non-nil when POS's line lists a constructor under a `constructors:' label.
+Climbs to the nearest shallower line — the listing's label — and holds
+only when that label is `constructors:'.  A blank line ends the block."
+  (save-excursion
+    (goto-char pos)
+    (forward-line 0)
+    (let ((indent (current-indentation)))
+      (and (looking-at-p "[ \t]")
+           (catch 'result
+             (while (not (bobp))
+               (forward-line -1)
+               (cond
+                ((looking-at-p "[ \t]*$") (throw 'result nil)) ; blank: block ends
+                ((< (current-indentation) indent)
+                 (throw 'result (and (looking-at-p "[ \t]*constructors:") t)))))
+             nil)))))
+
+(defun rackton-repl--constructor-head-at-p (pos)
+  "Non-nil when POS is the head name of a `constructors:' listing line.
+That is the capitalized name left of `::' — the data constructor — on a
+line the `constructors:' label encloses."
+  (save-match-data
+    (and (eq (get-text-property pos 'field) 'output)
+         (not (rackton-repl--after-type-colon-p pos))
+         (rackton-repl--constructor-line-p pos))))
+
 (defun rackton-repl--matcher-where (matcher pred)
   "Wrap font-lock MATCHER to fire only where PRED holds at the match start.
 MATCHER is a regexp string or a matcher function; PRED takes a buffer
@@ -288,6 +322,15 @@ type-name rule to error type detail."
    nil `((,(rackton-repl--matcher-where rackton--type-name-regexp
                                         #'rackton-repl--reply-type-at-p)
           0 'font-lock-type-face)))
+  ;; A ,info reply on a sum type heads each `constructors:' line with a
+  ;; data constructor.  The head left of `::' there is a constructor —
+  ;; not a type (it names a value) and not a method (a protocol's
+  ;; `methods:' lines share the shape but name functions).  Added after
+  ;; the reply-type rule so it prepends ahead of it and wins for the head.
+  (font-lock-add-keywords
+   nil `((,(rackton-repl--matcher-where rackton--type-name-regexp
+                                        #'rackton-repl--constructor-head-at-p)
+          0 'rackton-constructor-face)))
   ;; The quantifier heading a scheme is a keyword, not a type.  Added
   ;; after the type-name rule so — since `font-lock-add-keywords' with a
   ;; nil HOW prepends — it sits ahead of it and wins for the capitalized

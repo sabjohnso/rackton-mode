@@ -230,6 +230,48 @@ in the scheme is a type, but the constructor head left of `::' is not."
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'font-lock-type-face))))
 
+(ert-deftest rackton-repl-fontifies-info-constructor-heads ()
+  "A ,info reply on a sum type lists its data constructors under a
+`constructors:' label; each head left of `::' is a constructor."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "Maybe (type ctor, arity 1)\n"
+                     "  constructors:\n"
+                     "    None :: (All (a) (Maybe a))\n"
+                     "    Some :: (All (a) (-> a (Maybe a)))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "None")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-constructor-face))
+    (search-forward "Some")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-constructor-face))
+    ;; The type in the scheme keeps its type face.
+    (goto-char (point-min))
+    (search-forward "constructors:")    ; past the type-ctor head line
+    (search-forward "Maybe")            ; the one inside None's scheme
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'font-lock-type-face))))
+
+(ert-deftest rackton-repl-keeps-method-heads-unhighlighted ()
+  "A ,info reply on a protocol lists `Name :: scheme' methods under a
+`methods:' label; those heads are functions, not constructors."
+  (with-temp-buffer
+    (inferior-rackton-mode)
+    (insert (propertize
+             (concat "Functor (protocol)\n"
+                     "  methods:\n"
+                     "    map :: (All (a b) (-> (-> a b) (-> (f a) (f b))))\n")
+             'field 'output))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "map")
+    (should-not (eq (get-text-property (match-beginning 0) 'face)
+                    'rackton-constructor-face))))
+
 (ert-deftest rackton-repl-fontifies-forall-in-reply-as-keyword ()
   "The quantifier heading a reply's scheme — `All' or `∀' — is a keyword,
 not a type, even though it sits in the reply's type region."
