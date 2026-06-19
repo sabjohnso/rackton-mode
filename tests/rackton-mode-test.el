@@ -104,6 +104,16 @@ symbol easy-menu derives from it."
            "(data (Maybe a) None (Some a))"
            "data" 'font-lock-keyword-face)))
 
+(ert-deftest rackton-mode-fontifies-define-syntax-keywords ()
+  ;; The macro-defining forms `define-syntax' and `define-syntax-rule'
+  ;; head a definition and read as keywords, like the other define forms.
+  (should (rackton-test--has-face-p
+           "(define-syntax (twice stx) stx)"
+           "define-syntax" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(define-syntax-rule (twice x) (+ x x))"
+           "define-syntax-rule" 'font-lock-keyword-face)))
+
 (ert-deftest rackton-mode-fontifies-class-and-instance-keywords ()
   (should (rackton-test--has-face-p
            "(class (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))"

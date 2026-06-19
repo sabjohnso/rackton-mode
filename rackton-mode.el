@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.19
+;; Version: 0.4.20
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -65,6 +65,7 @@ Lisp-traditional TAB that only ever indents."
 
 (defconst rackton-definition-forms
   '("data" "struct" "newtype" "define" "define-alias" "define-effect"
+    "define-syntax" "define-syntax-rule"
     "class" "instance" "protocol" "foreign" "foreign-c")
   "Forms that introduce definitions at the top of a Rackton module.")
 
