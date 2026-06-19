@@ -386,6 +386,101 @@ INDEX is bound to the index alist; point may be moved freely."
     (should (= 1 (length (seq-filter (lambda (e) (equal (car e) "foo"))
                                      index))))))
 
+;;; Type annotations
+
+(ert-deftest rackton-scheme-type-extracts-type ()
+  "The type is everything right of `::', with whitespace collapsed."
+  (should (equal (rackton--scheme-type "foo :: Integer") "Integer"))
+  (should (equal (rackton--scheme-type
+                  "foo :: (All\n          (a)\n          (-> a a))")
+                 "(All (a) (-> a a))"))
+  ;; A hover with no `::' (a protocol or type constructor) yields nil.
+  (should-not (rackton--scheme-type "Foo — protocol")))
+
+(defmacro rackton-test--annotating (code type &rest body)
+  "Insert CODE in a `rackton-mode' buffer; bind a type source yielding TYPE.
+`rackton-type-functions' is stubbed to a lone provider returning TYPE
+(or nil), so the command is exercised independently of any backend.
+Point starts at `point-min'."
+  (declare (indent 2))
+  `(let ((rackton-type-functions (list (lambda (_name) ,type))))
+     (with-temp-buffer
+       (insert ,code)
+       (rackton-mode)
+       (goto-char (point-min))
+       ,@body)))
+
+(ert-deftest rackton-annotate-inserts-when-absent ()
+  "With no signature above, one is inserted matching the reported type."
+  (rackton-test--annotating
+      "(define (sqr x) (* x x))\n" "(-> Integer Integer)"
+    (search-forward "(define (")        ; point on the bound name `sqr'
+    (rackton-annotate-definition)
+    (should (equal (buffer-string)
+                   "(: sqr (-> Integer Integer))\n(define (sqr x) (* x x))\n"))))
+
+(ert-deftest rackton-annotate-fixes-wrong-type ()
+  "An existing signature whose type disagrees is rewritten."
+  (rackton-test--annotating
+      "(: sqr (-> String String))\n(define (sqr x) (* x x))\n"
+      "(-> Integer Integer)"
+    (search-forward "(define (")
+    (rackton-annotate-definition)
+    (should (equal (buffer-string)
+                   "(: sqr (-> Integer Integer))\n(define (sqr x) (* x x))\n"))))
+
+(ert-deftest rackton-annotate-leaves-correct-alone ()
+  "A signature already agreeing with the reported type is untouched."
+  (rackton-test--annotating
+      "(: sqr (-> Integer Integer))\n(define (sqr x) (* x x))\n"
+      "(-> Integer Integer)"
+    (search-forward "(define (")
+    (let ((before (buffer-string)))
+      (rackton-annotate-definition)
+      (should (equal (buffer-string) before)))))
+
+(ert-deftest rackton-annotate-ignores-whitespace-differences ()
+  "A signature differing only in whitespace counts as correct, so untouched."
+  (rackton-test--annotating
+      "(: sqr (->  Integer\n            Integer))\n(define (sqr x) (* x x))\n"
+      "(-> Integer Integer)"
+    (search-forward "(define (")
+    (let ((before (buffer-string)))
+      (rackton-annotate-definition)
+      (should (equal (buffer-string) before)))))
+
+(ert-deftest rackton-annotate-handles-value-define ()
+  "A (define name value) form, not just a function, gets a signature."
+  (rackton-test--annotating
+      "(define answer 42)\n" "Integer"
+    (search-forward "(define ")          ; point on `answer'
+    (rackton-annotate-definition)
+    (should (equal (buffer-string)
+                   "(: answer Integer)\n(define answer 42)\n"))))
+
+(ert-deftest rackton-annotate-preserves-indentation ()
+  "The inserted signature is indented to match the define it heads."
+  (rackton-test--annotating
+      "  (define (sqr x) (* x x))\n" "(-> Integer Integer)"
+    (search-forward "(define (")
+    (rackton-annotate-definition)
+    (should (equal (buffer-string)
+                   "  (: sqr (-> Integer Integer))\n  (define (sqr x) (* x x))\n"))))
+
+(ert-deftest rackton-annotate-requires-point-on-name ()
+  "Point off the bound name (in the body) is a `user-error', no edit."
+  (rackton-test--annotating
+      "(define (sqr x) (* x x))\n" "(-> Integer Integer)"
+    (search-forward "* x")               ; in the body, not on `sqr'
+    (should-error (rackton-annotate-definition) :type 'user-error)))
+
+(ert-deftest rackton-annotate-errors-without-a-type ()
+  "When no type source can answer, the command errors rather than editing."
+  (rackton-test--annotating
+      "(define (sqr x) (* x x))\n" nil     ; provider yields nil
+    (search-forward "(define (")
+    (should-error (rackton-annotate-definition) :type 'user-error)))
+
 ;;; menu
 
 (ert-deftest rackton-mode-defines-menu ()

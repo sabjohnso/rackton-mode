@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.21
+;; Version: 0.4.22
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -437,8 +437,23 @@ indexed, so nested definitions are left out."
 ;; sitting just above its `define'.  These helpers — pure source
 ;; structure, no type checker — locate the define enclosing point, read
 ;; an existing signature, and write one.  The type they place is the
-;; caller's to supply (the REPL command in rackton-repl.el infers it),
-;; so the editing stays testable on its own.
+;; caller's to supply, so the editing stays testable on its own.
+;;
+;; The type itself comes from a type source, named abstractly by
+;; `rackton-type-functions'.  The LSP layer (rackton-lsp.el) and the
+;; REPL layer (rackton-repl.el) each register one; the command prefers
+;; whichever answers first, so a connected LSP needs no REPL and no
+;; loaded source file.  With neither layer present the command says so.
+
+(defvar rackton-type-functions nil
+  "Abnormal hook naming the sources of a binding's type, tried in order.
+Each function is called with the binding's NAME (a string) while point
+is on that name, and returns the type expression as a string — the
+`type' of a `(: name type)' signature, with no `name ::' prefix — or
+nil when it cannot answer.  `rackton-annotate-definition' takes the
+first non-nil reply.  The LSP layer registers its provider at the front
+\(so an eglot connection is preferred) and the REPL layer appends
+itself as a fallback.")
 
 (defun rackton--enclosing-define (&optional pos)
   "Open-paren position of the nearest `define' form enclosing POS, or nil.
@@ -510,6 +525,44 @@ Return `inserted', `updated', or `unchanged'."
         (insert desired))
       'updated))))
 
+(defun rackton--scheme-type (line)
+  "The type expression in a `name :: type' LINE, or nil.
+Everything right of the first `::', whitespace collapsed, so a wrapped
+multi-line scheme reads as the single type a signature needs.  A LINE
+with no `::' — an error, or a hover for a protocol or type constructor —
+yields nil.  Both the LSP hover and the REPL reply print this form, so
+the reading is shared."
+  (when (string-match "::" line)
+    (let ((type (rackton--collapse-whitespace (substring line (match-end 0)))))
+      (unless (string-empty-p type)
+        type))))
+
+(defun rackton-annotate-definition ()
+  "Insert or correct the type signature for the define name at point.
+Point must be on the name a `define' form binds.  Its type is read from
+the first source in `rackton-type-functions' that can answer — an eglot
+connection when present, otherwise a running REPL — and a `(: name
+type)' signature is kept just above the define: inserted when absent,
+rewritten when its type disagrees, and left untouched when it already
+agrees.
+
+With a Language Server connected (\\[eglot]) nothing more is needed.
+Without one, start the REPL (\\[rackton-repl]) and evaluate the define
+\(\\[rackton-eval-defun]) so its type can be inferred."
+  (interactive)
+  (let* ((open (rackton--enclosing-define))
+         (bounds (and open (rackton--form-name-bounds open))))
+    (unless (and bounds (<= (car bounds) (point)) (<= (point) (cdr bounds)))
+      (user-error "Point is not on a `define'd name"))
+    (let* ((name (buffer-substring-no-properties (car bounds) (cdr bounds)))
+           (type (run-hook-with-args-until-success 'rackton-type-functions name)))
+      (unless type
+        (user-error
+         "No type for `%s' — connect the LSP (M-x eglot) or evaluate it in the REPL"
+         name))
+      (message "Annotation %s for `%s'"
+               (rackton--ensure-annotation open name type) name))))
+
 ;;; Mode
 
 ;;;###autoload
@@ -539,9 +592,13 @@ language itself."
 ;; `easy-menu-add-item' calls in rackton-repl.el and rackton-search.el),
 ;; mirroring how each layer binds its own keys into `rackton-mode-map'.
 
+(define-key rackton-mode-map (kbd "C-c :") #'rackton-annotate-definition)
+
 (easy-menu-define rackton-mode-menu rackton-mode-map
   "Menu for `rackton-mode'."
   '("Rackton"
+    ["Annotate Definition" rackton-annotate-definition
+     :help "Insert or correct the type signature for the define at point"]
     ["Go to Definition…" imenu
      :help "Jump to a definition via the imenu index"]))
 

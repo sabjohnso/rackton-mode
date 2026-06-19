@@ -1048,105 +1048,31 @@ is now a type (see the reply-type tests)."
                  rackton-repl-search rackton-repl-returns))
       (should (memq c cmds)))))
 
-;;; Type annotations
+;;; Type annotations: the REPL type provider
 
-(ert-deftest rackton-repl-type-from-reply-extracts-type ()
-  "The type is everything right of `::', with whitespace collapsed."
-  (should (equal (rackton-repl--type-from-reply "foo :: Integer") "Integer"))
-  (should (equal (rackton-repl--type-from-reply
-                  "foo :: (All\n          (a)\n          (-> a a))")
-                 "(All (a) (-> a a))"))
-  (should-not (rackton-repl--type-from-reply "error: unbound foo")))
+(ert-deftest rackton-repl-type-provider-quiet-when-dead ()
+  "With no live REPL the provider answers nil, so it never spawns one."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () nil)))
+    (should-not (rackton-repl--type-provider "sqr"))))
 
-(defmacro rackton-test--with-annotation (code reply &rest body)
-  "Insert CODE in a `rackton-mode' buffer with REPLY stubbed for `,type'.
-Point starts at `point-min'; eval BODY with `rackton-repl-query' stubbed."
-  (declare (indent 2))
-  `(cl-letf (((symbol-function 'rackton-repl-query)
-              (rackton-test--stub-query (list (cons ",type" ,reply)))))
-     (with-temp-buffer
-       (insert ,code)
-       (rackton-mode)
-       (goto-char (point-min))
-       ,@body)))
+(ert-deftest rackton-repl-type-provider-returns-type-when-live ()
+  "A live REPL's `,type' reply is parsed down to the bare type."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'rackton-repl-query)
+             (rackton-test--stub-query '((",type" . "sqr :: (-> Integer Integer)")))))
+    (should (equal (rackton-repl--type-provider "sqr") "(-> Integer Integer)"))))
 
-(ert-deftest rackton-annotate-inserts-when-absent ()
-  "With no signature above, one is inserted matching the inferred type."
-  (rackton-test--with-annotation
-      "(define (sqr x) (* x x))\n" "sqr :: (-> Integer Integer)"
-    (search-forward "(define (")        ; point on the bound name `sqr'
-    (rackton-annotate-definition)
-    (should (equal (buffer-string)
-                   "(: sqr (-> Integer Integer))\n(define (sqr x) (* x x))\n"))))
-
-(ert-deftest rackton-annotate-fixes-wrong-type ()
-  "An existing signature whose type disagrees is rewritten."
-  (rackton-test--with-annotation
-      "(: sqr (-> String String))\n(define (sqr x) (* x x))\n"
-      "sqr :: (-> Integer Integer)"
-    (search-forward "(define (")
-    (rackton-annotate-definition)
-    (should (equal (buffer-string)
-                   "(: sqr (-> Integer Integer))\n(define (sqr x) (* x x))\n"))))
-
-(ert-deftest rackton-annotate-leaves-correct-alone ()
-  "A signature already agreeing with the inferred type is untouched."
-  (rackton-test--with-annotation
-      "(: sqr (-> Integer Integer))\n(define (sqr x) (* x x))\n"
-      "sqr :: (-> Integer Integer)"
-    (search-forward "(define (")
-    (let ((before (buffer-string)))
-      (rackton-annotate-definition)
-      (should (equal (buffer-string) before)))))
-
-(ert-deftest rackton-annotate-ignores-whitespace-differences ()
-  "A signature differing only in whitespace counts as correct, so untouched."
-  (rackton-test--with-annotation
-      "(: sqr (->  Integer\n            Integer))\n(define (sqr x) (* x x))\n"
-      "sqr :: (-> Integer Integer)"
-    (search-forward "(define (")
-    (let ((before (buffer-string)))
-      (rackton-annotate-definition)
-      (should (equal (buffer-string) before)))))
-
-(ert-deftest rackton-annotate-handles-value-define ()
-  "A (define name value) form, not just a function, gets a signature."
-  (rackton-test--with-annotation
-      "(define answer 42)\n" "answer :: Integer"
-    (search-forward "(define ")          ; point on `answer'
-    (rackton-annotate-definition)
-    (should (equal (buffer-string)
-                   "(: answer Integer)\n(define answer 42)\n"))))
-
-(ert-deftest rackton-annotate-preserves-indentation ()
-  "The inserted signature is indented to match the define it heads."
-  (rackton-test--with-annotation
-      "  (define (sqr x) (* x x))\n" "sqr :: (-> Integer Integer)"
-    (search-forward "(define (")
-    (rackton-annotate-definition)
-    (should (equal (buffer-string)
-                   "  (: sqr (-> Integer Integer))\n  (define (sqr x) (* x x))\n"))))
-
-(ert-deftest rackton-annotate-requires-point-on-name ()
-  "Point off the bound name (in the body) is a `user-error', no edit."
-  (with-temp-buffer
-    (insert "(define (sqr x) (* x x))\n")
-    (rackton-mode)
-    (goto-char (point-min))
-    (search-forward "* x")               ; in the body, not on `sqr'
-    (should-error (rackton-annotate-definition) :type 'user-error)))
-
-(ert-deftest rackton-annotate-errors-without-type ()
-  "When the REPL reports no type for the name, the command errors."
-  (cl-letf (((symbol-function 'rackton-repl-query)
+(ert-deftest rackton-repl-type-provider-nil-without-a-type ()
+  "A reply carrying no type (an error) yields nil, not the error text."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'rackton-repl-query)
              (rackton-test--stub-query '((",type" . "error: unbound sqr")
                                          (",info" . "error: unbound sqr")))))
-    (with-temp-buffer
-      (insert "(define (sqr x) (* x x))\n")
-      (rackton-mode)
-      (goto-char (point-min))
-      (search-forward "(define (")
-      (should-error (rackton-annotate-definition) :type 'user-error))))
+    (should-not (rackton-repl--type-provider "sqr"))))
+
+(ert-deftest rackton-repl-registers-type-provider ()
+  "Loading rackton-repl adds its provider to `rackton-type-functions'."
+  (should (memq 'rackton-repl--type-provider rackton-type-functions)))
 
 (provide 'rackton-repl-test)
 ;;; rackton-repl-test.el ends here

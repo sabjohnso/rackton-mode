@@ -19,6 +19,9 @@ functional language (in the style of Coalton) embedded in Racket.
 - Indentation rules for Rackton's special forms, including the `do`
   style used throughout the rackton repository: binding clauses align
   under the first binding, the trailing expression sits at body indent.
+- `C-c :` (`rackton-annotate-definition`) inserts or corrects the
+  `(: name type)` signature above the `define` whose name is at point.
+  See *Annotating definitions* below.
 - Derives from the built-in `scheme-mode`; no third-party dependencies.
 
 Indentation knowledge lives in a buffer-local table consulted by the
@@ -45,6 +48,24 @@ how Scheme buffers indent.
 Files whose first line is `#lang rackton` then open in `rackton-mode`
 automatically.
 
+## Annotating definitions
+
+With point on the name a `define` binds, `C-c :`
+(`rackton-annotate-definition`) keeps a `(: name type)` signature just
+above the `define`: it inserts one when absent, rewrites it when the
+type disagrees, and leaves it untouched when it already agrees.
+
+The type comes from whichever type source can answer first:
+
+- **the LSP**, when eglot is connected — read from the server's hover,
+  so no REPL and no loaded source file are needed; or
+- **a running REPL** otherwise — its inferred type, provided one is
+  already running (the command never starts a REPL on its own).
+
+With neither connected, the command says so rather than guessing. The
+source is an open list, `rackton-type-functions`, that each backend
+registers into; the LSP is preferred when present.
+
 ## The REPL
 
 `C-c C-z` (or `M-x rackton-repl`) starts `racket -l rackton/repl` in a
@@ -58,7 +79,6 @@ comint buffer. From any `rackton-mode` buffer:
 | `C-c C-r` | `rackton-send-region`     | send each top-level form in the region     |
 | `C-c C-k` | `rackton-eval-buffer`     | send the whole buffer (skips `#lang` line) |
 | `C-c C-t` | `rackton-type`            | show the inferred type (`,type`)           |
-| `C-c :`   | `rackton-annotate-definition` | insert or correct the `(: name type)` signature for the define at point |
 | `C-c C-d` | `rackton-describe-symbol` | describe a binding (`,info`)               |
 | `C-c C-s` | `rackton-show-source`     | show the form that bound a name (`,source`)|
 | `C-c C-a` | `rackton-accepts`         | search by accepted argument type (`,accepts`) |
