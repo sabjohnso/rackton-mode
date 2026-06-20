@@ -26,6 +26,7 @@
       (should (equal (plist-get plist 'command) "racket"))
       (should (equal (plist-get plist 'command-args) '("-l" "rackton/dap")))
       (should (equal (plist-get plist 'modes) '(rackton-mode)))
+      (should (equal (plist-get plist :type) "rackton"))
       (should (plist-member plist :program)))))
 
 (ert-deftest rackton-dap-register-is-idempotent ()

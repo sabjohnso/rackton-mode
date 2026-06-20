@@ -1,7 +1,7 @@
 ;;; rackton-dap.el --- dape integration for Rackton  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.13
+;; Version: 0.4.14
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, tools
 
@@ -37,6 +37,7 @@ second.  The launch command is built from `rackton-program'."
           ensure dape-ensure-command
           command ,rackton-program
           command-args ("-l" "rackton/dap")
+          :type "rackton"
           :program dape-buffer-default)))
 
 (with-eval-after-load 'dape (rackton-dap--register))
