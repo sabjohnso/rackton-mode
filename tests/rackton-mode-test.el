@@ -10,6 +10,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'rackton-mode)
 
 ;;; Helpers
@@ -609,6 +610,38 @@ Point starts at `point-min'."
   "The base menu offers imenu-based navigation."
   (should (memq 'imenu
                 (rackton-test--menu-commands (rackton-test--rackton-menu)))))
+
+;;; Paredit curly-brace opt-in
+
+(ert-deftest rackton-paredit-bind-curly-installs-keys ()
+  "The opt-in binds {, }, and M-{ to paredit's curly commands, so a
+buffer's map/set braces edit structurally like its ( ) and [ ]."
+  (let ((map (make-sparse-keymap)))
+    (rackton--bind-paredit-curly map)
+    (should (eq (lookup-key map "{") 'paredit-open-curly))
+    (should (eq (lookup-key map "}") 'paredit-close-curly))
+    (should (eq (lookup-key map (kbd "M-{")) 'paredit-wrap-curly))))
+
+(ert-deftest rackton-paredit-bind-curly-is-idempotent ()
+  "Re-binding leaves exactly the curly commands, never a stale layer."
+  (let ((map (make-sparse-keymap)))
+    (rackton--bind-paredit-curly map)
+    (rackton--bind-paredit-curly map)
+    (should (eq (lookup-key map "{") 'paredit-open-curly))
+    (should (eq (lookup-key map "}") 'paredit-close-curly))
+    (should (eq (lookup-key map (kbd "M-{")) 'paredit-wrap-curly))))
+
+(ert-deftest rackton-enable-paredit-curly-is-an-interactive-command ()
+  (should (commandp 'rackton-enable-paredit-curly)))
+
+(ert-deftest rackton-enable-paredit-curly-reports-missing-paredit ()
+  "With paredit absent the command says so plainly rather than failing
+on a void keymap."
+  (cl-letf (((symbol-function 'require)
+             (lambda (feature &rest _)
+               (unless (eq feature 'paredit)
+                 (error "unexpected require: %s" feature)))))
+    (should-error (rackton-enable-paredit-curly) :type 'user-error)))
 
 (provide 'rackton-mode-test)
 ;;; rackton-mode-test.el ends here

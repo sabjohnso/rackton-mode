@@ -25,6 +25,10 @@ functional language (in the style of Coalton) embedded in Racket.
 - `C-c :` (`rackton-annotate-definition`) inserts or corrects the
   `(: name type)` signature above the `define` whose name is at point.
   See *Annotating definitions* below.
+- `M-x rackton-enable-paredit-curly` makes paredit treat the `{..}` map
+  and `#{..}` set braces structurally, like `()` and `[]` — an opt-in
+  that binds `{`, `}`, and `M-{` in `paredit-mode-map`. See *Paredit
+  and braces* below.
 - Derives from the built-in `scheme-mode`; no third-party dependencies.
 
 Indentation knowledge lives in a buffer-local table consulted by the
@@ -68,6 +72,28 @@ The type comes from whichever type source can answer first:
 With neither connected, the command says so rather than guessing. The
 source is an open list, `rackton-type-functions`, that each backend
 registers into; the LSP is preferred when present.
+
+## Paredit and braces
+
+Rackton's map literals are `{..}` and its set literals `#{..}`, so
+braces are balanced delimiters on a par with `()` and `[]`. The mode's
+syntax table already says so, which is all paredit needs for
+navigation and slurp/barf across braces. Paredit only declines to
+*bind* the brace keys by default, leaving that to you.
+
+`M-x rackton-enable-paredit-curly` supplies the binding: it puts `{`
+and `}` on paredit's curly insert/close commands and `M-{` on
+`paredit-wrap-curly`, mirroring the round and square keys. The keys go
+in `paredit-mode-map`, so the change applies wherever paredit runs. It
+is opt-in and never loaded for you — call it once from your init:
+
+```elisp
+(with-eval-after-load 'paredit
+  (rackton-enable-paredit-curly))
+```
+
+The command requires paredit and reports plainly when it is not
+installed.
 
 ## The REPL
 

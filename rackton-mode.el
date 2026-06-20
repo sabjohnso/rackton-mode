@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.24
+;; Version: 0.4.25
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -648,8 +648,46 @@ re-check the first line after each self-inserted character so typing the
              (not (derived-mode-p 'rackton-mode)))
     (add-hook 'post-self-insert-hook #'rackton--enable-on-lang-line nil t)))
 
+;;; Paredit: structural braces for map/set literals
+;;
+;; Rackton writes map literals as `{..}' and set literals as `#{..}',
+;; so braces are balanced delimiters just like `()' and `[]'.  The
+;; syntax table already says so, which is enough for paredit's
+;; navigation and slurp/barf.  Paredit only declines to *bind* the
+;; brace keys by default, leaving that opt-in to the user.  This
+;; command supplies the binding, on request, without making paredit a
+;; dependency of the mode.
+
+(defvar paredit-mode-map)               ; defined by paredit when it loads
+(declare-function paredit-open-curly "paredit")
+(declare-function paredit-close-curly "paredit")
+(declare-function paredit-wrap-curly "paredit")
+
+(defun rackton--bind-paredit-curly (map)
+  "Bind the curly-brace structural-editing keys in MAP, and return MAP.
+`{' inserts a balanced pair, `}' moves past the close, and \\`M-{'
+wraps the following form — the brace analogues of paredit's round and
+square keys.  The commands are named symbolically, so MAP needs no
+loaded paredit and the binding is idempotent."
+  (define-key map "{" #'paredit-open-curly)
+  (define-key map "}" #'paredit-close-curly)
+  (define-key map (kbd "M-{") #'paredit-wrap-curly)
+  map)
+
 ;;;###autoload
-(add-hook 'find-file-hook #'rackton--watch-lang-line)
+(defun rackton-enable-paredit-curly ()
+  "Make paredit treat `{' and `}' like `(' `)' and `[' `]'.
+Rackton's map (`{..}') and set (`#{..}') literals are balanced
+brace forms, but paredit leaves the brace keys unbound by default.
+This binds them in `paredit-mode-map' — `{'/`}' to paredit's curly
+insert and close commands and \\`M-{' to `paredit-wrap-curly', mirroring
+the round and square bindings — so the change applies wherever paredit
+is active.  Opt-in: call it from your init or with \\[execute-extended-command].
+Signals a `user-error' when paredit is not installed."
+  (interactive)
+  (unless (require 'paredit nil t)
+    (user-error "Paredit is not installed"))
+  (rackton--bind-paredit-curly paredit-mode-map))
 
 (provide 'rackton-mode)
 ;;; rackton-mode.el ends here
