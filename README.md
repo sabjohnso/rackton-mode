@@ -8,8 +8,9 @@ functional language (in the style of Coalton) embedded in Racket.
 - Automatic mode selection for files beginning with `#lang rackton`. A
   new, empty `.rkt` file opens in the `.rkt` default mode, then switches
   to `rackton-mode` as soon as you type its `#lang rackton` line.
-- Font-lock for Rackton's surface forms (`data`, `class`, `instance`,
-  `match`, `do`, …), module import/export forms and their spec
+- Font-lock for Rackton's surface forms (`data`, `protocol`,
+  `instance`, `match`, `do`, the type/data family and constraint
+  declarations, …), module import/export forms and their spec
   introducers, and `(: name type)` signatures.
 - Types and data constructors are distinguished by position, not just
   capitalization: names in type positions (signatures, arrows,

@@ -172,13 +172,73 @@ the watcher, then type the line a character at a time (each through
            "(define-syntax-rule (twice x) (+ x x))"
            "define-syntax-rule" 'font-lock-keyword-face)))
 
-(ert-deftest rackton-mode-fontifies-class-and-instance-keywords ()
+(ert-deftest rackton-mode-fontifies-protocol-and-instance-keywords ()
   (should (rackton-test--has-face-p
-           "(class (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))"
-           "class" 'font-lock-keyword-face))
+           "(protocol (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))"
+           "protocol" 'font-lock-keyword-face))
   (should (rackton-test--has-face-p
            "(instance (Functor Box)\n  (define (fmap f b) b))"
            "instance" 'font-lock-keyword-face)))
+
+(ert-deftest rackton-mode-no-longer-treats-class-as-keyword ()
+  ;; Rackton renamed `class' to `protocol'; `class' is no longer a
+  ;; surface form, so it must not be highlighted as one.
+  (should-not (rackton-test--has-face-p
+               "(class (Functor f)\n  (: fmap (-> a a)))"
+               "class" 'font-lock-keyword-face)))
+
+(ert-deftest rackton-mode-fontifies-family-and-constraint-keywords ()
+  ;; Type/data families and constraint synonyms are top-level
+  ;; declaration forms; their heads read as keywords.
+  (should (rackton-test--has-face-p
+           "(type-family (If b t e)\n  [True t e = t])"
+           "type-family" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(type-instance (Elem String) = Char)"
+           "type-instance" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(data-family (Arr a))"
+           "data-family" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(data-instance (Arr Boolean) (MkBits Integer))"
+           "data-instance" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(define-constraint (Stringy a) (Show a) (Eq a))"
+           "define-constraint" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(constraint-family (All c xs)\n  [c (Cons x xs) = Top])"
+           "constraint-family" 'font-lock-keyword-face)))
+
+(ert-deftest rackton-mode-classifies-family-types-and-constructors ()
+  ;; A family/instance head names types; a data-instance still
+  ;; introduces value constructors, exactly like `data'.
+  (let ((code "(data-instance (Arr Boolean) (MkBits Integer))"))
+    (should (rackton-test--has-face-p code "Arr" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Boolean" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "MkBits" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Integer" 'font-lock-type-face)))
+  (let ((code "(type-instance (Elem String) = Char)"))
+    (should (rackton-test--has-face-p code "Elem" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "String" 'font-lock-type-face))
+    (should (rackton-test--has-face-p code "Char" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-exists-quantifier ()
+  ;; `Exists' is the existential dual of `All'; like `All' it heads a
+  ;; type scheme and reads as a keyword, not a type name, while the
+  ;; capitalized names in its body stay type-level.
+  (let ((code "(: items (List (Exists (a) ((Show a) => a))))"))
+    (should (rackton-test--has-face-p code "Exists" 'font-lock-keyword-face))
+    (should (rackton-test--has-face-p code "Show" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-fontifies-open-and-match-star ()
+  ;; `open' unpacks an existential; `match*' matches several
+  ;; scrutinees.  Both head expressions and read as keywords.
+  (should (rackton-test--has-face-p
+           "(open box (a x) (show x))"
+           "open" 'font-lock-keyword-face))
+  (should (rackton-test--has-face-p
+           "(match* (a b)\n  [(0 0) 0])"
+           "match*" 'font-lock-keyword-face)))
 
 (ert-deftest rackton-mode-fontifies-match-and-do-keywords ()
   (should (rackton-test--has-face-p
@@ -349,9 +409,9 @@ the watcher, then type the line a character at a time (each through
   (rackton-test--indents-to
    "(instance (Functor Box)\n  (define (fmap f b) b))"))
 
-(ert-deftest rackton-mode-indents-class-body ()
+(ert-deftest rackton-mode-indents-protocol-body ()
   (rackton-test--indents-to
-   "(class (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))"))
+   "(protocol (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))"))
 
 (ert-deftest rackton-mode-indents-data-constructors ()
   (rackton-test--indents-to
@@ -418,13 +478,13 @@ INDEX is bound to the index alist; point may be moved freely."
       (should (assoc "Endo" types))
       (should (assoc "Counter" types)))))
 
-(ert-deftest rackton-mode-imenu-groups-classes ()
+(ert-deftest rackton-mode-imenu-groups-protocols ()
   (rackton-test--with-imenu
-      (concat "(class (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))\n"
+      (concat "(protocol (Functor f)\n  (: fmap (-> (-> a b) (-> (f a) (f b)))))\n"
               "(protocol (Stack (s => Eq))\n  (: push (-> a (s a) (s a))))\n")
-    (let ((classes (cdr (assoc "Classes" index))))
-      (should (assoc "Functor" classes))
-      (should (assoc "Stack" classes)))))
+    (let ((protocols (cdr (assoc "Protocols" index))))
+      (should (assoc "Functor" protocols))
+      (should (assoc "Stack" protocols)))))
 
 (ert-deftest rackton-mode-imenu-labels-instances-by-head ()
   (rackton-test--with-imenu

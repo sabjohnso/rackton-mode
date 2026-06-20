@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.23
+;; Version: 0.4.24
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -66,13 +66,15 @@ Lisp-traditional TAB that only ever indents."
 (defconst rackton-definition-forms
   '("data" "struct" "newtype" "define" "define-alias" "define-effect"
     "define-syntax" "define-syntax-rule"
-    "class" "instance" "protocol" "foreign" "foreign-c")
+    "type-family" "type-instance" "data-family" "data-instance"
+    "define-constraint" "constraint-family"
+    "instance" "protocol" "foreign" "foreign-c")
   "Forms that introduce definitions at the top of a Rackton module.")
 
 (defconst rackton-expression-forms
-  '("match" "match-let" "do" "let" "let*" "let+" "let&" "let%" "letrec"
-    "lambda" "λ" "case-lambda" "case-λ" "cond" "if" "ann" "delay"
-    "handle" "escape" "proc" "rec" "feed" "update" "via" "racket")
+  '("match" "match*" "match-let" "do" "let" "let*" "let+" "let&" "let%"
+    "letrec" "lambda" "λ" "case-lambda" "case-λ" "cond" "if" "ann" "delay"
+    "open" "handle" "escape" "proc" "rec" "feed" "update" "via" "racket")
   "Forms that head Rackton expressions.")
 
 (defconst rackton-module-forms
@@ -89,10 +91,12 @@ reference.")
 `else' names the catch-all clause of `cond' and `case'.")
 
 (defconst rackton-type-quantifiers
-  '("All" "∀")
-  "The universal-type quantifier, written `All' or the mathematical `∀'.
-It heads a type scheme — (All (a) …) — and a protocol law; both spellings
-are surface synonyms (see surface.rkt's `#:datum-literals (All ∀)').")
+  '("All" "∀" "Exists")
+  "The type quantifiers that head a type scheme.
+`All' (or the mathematical `∀') is universal — (All (a) …) — and also
+heads a protocol law; both spellings are surface synonyms (see
+surface.rkt's `#:datum-literals (All ∀)').  `Exists' is its existential
+dual — (Exists (a) …) — for first-class existential types.")
 
 ;;; Font-lock
 
@@ -115,15 +119,19 @@ are surface synonyms (see surface.rkt's `#:datum-literals (All ∀)').")
 ;; constructor names a `data'/GADT declaration introduces).
 
 (defconst rackton--type-form-heads
-  '(: -> All foreign foreign-c define-alias
+  '(: -> All Exists foreign foreign-c define-alias
+      type-family type-instance data-family define-constraint constraint-family
       data-out struct-out protocol-out)
-  "Heads of forms whose every capitalized name is type-level.")
+  "Heads of forms whose every capitalized name is type-level.
+The family and constraint declarations live here because every name
+they mention is a type, type constructor, or constraint — `data-instance'
+is the lone exception, since it introduces value constructors.")
 
 (defconst rackton--typed-head-forms
-  '(data struct newtype class instance protocol racket)
+  '(data struct newtype data-instance instance protocol racket)
   "Forms whose first argument is a type-level head.")
 
-(defconst rackton--data-forms '(data struct newtype)
+(defconst rackton--data-forms '(data struct newtype data-instance)
   "Declaration forms whose body introduces constructors.")
 
 (defun rackton--symbol-at (pos)
@@ -191,10 +199,10 @@ deciding context is a constructor."
          ((and (memq head rackton--typed-head-forms)
                (eq child (rackton--element-start open 1)))
           (setq decided 'type))
-         ;; class/protocol keyword blocks: #:requires names constraints;
+         ;; protocol keyword blocks: #:requires names constraints;
          ;; #:derive takes (SuperClass (define ...) ...) clauses whose
          ;; head names a superclass while the defines are expressions.
-         ((memq head '(class protocol))
+         ((eq head 'protocol)
           (let ((governing (rackton--governing-keyword open child)))
             (cond ((equal governing "#:requires")
                    (setq decided 'type))
@@ -287,8 +295,8 @@ found, as a font-lock matcher must."
 
 (defconst rackton-indent-specs
   '((match     . 1)
+    (match*    . 1)
     (match-let . 1)
-    (class     . 1)
     (instance  . 1)
     (protocol  . 1)
     (data      . 1)
@@ -349,7 +357,7 @@ INDENT-POINT and STATE are as for `lisp-indent-function'."
 ;;; imenu
 ;;
 ;; A definition index for navigation: `define' bindings sit flat at the
-;; top, and the type-, class-, and instance-introducing forms group
+;; top, and the type-, protocol-, and instance-introducing forms group
 ;; into submenus.  The forms are walked with the same element-position
 ;; helpers the font-lock classifier uses, so a name with nested types
 ;; (an `instance' head like (Eq (Maybe a))) is read correctly rather
@@ -359,13 +367,13 @@ INDENT-POINT and STATE are as for `lisp-indent-function'."
   '(data struct newtype define-alias define-effect)
   "Definition forms grouped under the imenu \"Types\" submenu.")
 
-(defconst rackton--imenu-class-heads '(class protocol)
-  "Definition forms grouped under the imenu \"Classes\" submenu.")
+(defconst rackton--imenu-protocol-heads '(protocol)
+  "Definition forms grouped under the imenu \"Protocols\" submenu.")
 
 (defun rackton--form-name-bounds (open)
   "Buffer bounds (BEG . END) of the name the form at OPEN binds, or nil.
 The name is the first symbol of element 1, so both (define (f x) …)
-and (define f …) — and the parenthesised heads of `data', `class',
+and (define f …) — and the parenthesised heads of `data', `protocol',
 etc., and a (: name …) signature — resolve to the same token."
   (let ((e1 (rackton--element-start open 1)))
     (when e1
@@ -399,10 +407,10 @@ For example (instance (Eq (Maybe a)) …) yields \"Eq (Maybe a)\"."
 
 (defun rackton--imenu-create-index ()
   "Build an imenu index of the buffer's Rackton definitions.
-Top-level `define's appear flat; types, classes, and instances are
+Top-level `define's appear flat; types, protocols, and instances are
 grouped into submenus.  Only forms beginning at column zero are
 indexed, so nested definitions are left out."
-  (let ((functions '()) (types '()) (classes '()) (instances '()))
+  (let ((functions '()) (types '()) (protocols '()) (instances '()))
     (save-excursion
       (goto-char (point-min))
       (while (re-search-forward "^(" nil t)
@@ -420,15 +428,15 @@ indexed, so nested definitions are left out."
                  ((memq head rackton--imenu-type-heads)
                   (when-let ((name (rackton--form-bound-name open)))
                     (push (cons name open) types)))
-                 ((memq head rackton--imenu-class-heads)
+                 ((memq head rackton--imenu-protocol-heads)
                   (when-let ((name (rackton--form-bound-name open)))
-                    (push (cons name open) classes)))
+                    (push (cons name open) protocols)))
                  ((eq head 'instance)
                   (when-let ((label (rackton--imenu-instance-label open)))
                     (push (cons label open) instances))))))))))
     (append (nreverse functions)
             (when types     (list (cons "Types" (nreverse types))))
-            (when classes   (list (cons "Classes" (nreverse classes))))
+            (when protocols (list (cons "Protocols" (nreverse protocols))))
             (when instances (list (cons "Instances" (nreverse instances)))))))
 
 ;;; Type annotations
