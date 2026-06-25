@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.25
+;; Version: 0.4.26
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -54,6 +54,15 @@ Lisp-traditional TAB that only ever indents."
 (defface rackton-constructor-face
   '((t :inherit font-lock-constant-face))
   "Face for Rackton data constructors."
+  :group 'rackton)
+
+(defface rackton-infix-operator-face
+  '((t :inherit font-lock-function-name-face))
+  "Face for Rackton infix operators.
+An operator written in infix position is a backtick-quoted identifier,
+as in (a `+ b) or the sections (`< 3) and (3 `<).  Inherits the
+function-name face by default, since the operator names a function
+applied between its terms; customize it via \\[customize-face]."
   :group 'rackton)
 
 ;;; Surface forms
@@ -254,6 +263,19 @@ found, as a font-lock matcher must."
   (rackton--search-capitalized
    limit (lambda (pos) (not (rackton--type-position-p pos)))))
 
+(defun rackton--match-infix-operator (limit)
+  "Font-lock matcher: the next infix operator (a `op token) before LIMIT.
+Skips a match inside a string or comment, so the override the rule
+carries never repaints operator-looking text there."
+  (let (found)
+    (while (and (not found)
+                (re-search-forward "`\\(?:\\sw\\|\\s_\\)+" limit t))
+      ;; `syntax-ppss' moves point; `save-excursion' keeps the search
+      ;; advancing past each match rather than re-matching it forever.
+      (unless (save-excursion (nth 8 (syntax-ppss (match-beginning 0))))
+        (setq found t)))
+    found))
+
 (defconst rackton-font-lock-keywords
   `((,(concat "(" (regexp-opt (append rackton-definition-forms
                                       rackton-expression-forms
@@ -279,6 +301,19 @@ found, as a font-lock matcher must."
     ;; here rather than inherited from scheme-mode's keywords so
     ;; buffers that only add these keywords (the REPL) highlight them.
     ("#:\\(?:\\sw\\|\\s_\\)+" . font-lock-builtin-face)
+    ;; Infix operators: a backtick-quoted identifier, as in (a `+ b),
+    ;; (`< 3), or (3 `<).  The whole `op token reads with the operator
+    ;; face.  Matched lexically — a backtick fused to a symbol — which
+    ;; is the infix-operator form (surface.rkt's `infix-operator'
+    ;; class); the backtick of a quasiquoted list literal is fused to a
+    ;; paren, not a symbol, so it does not match.  Stated before the
+    ;; type and constructor rules so an operator named like a
+    ;; constructor (`Cons) reads as an operator, not a constructor.
+    ;; OVERRIDE is on so an operator symbol another rule already painted
+    ;; (scheme-mode highlights `+'/`<' as builtins) still reads as an
+    ;; operator; the matcher itself skips strings and comments, so that
+    ;; override never reaches their text.
+    (rackton--match-infix-operator 0 'rackton-infix-operator-face t)
     ;; The type quantifier `All'/`∀'.  Before the type-name rule so its
     ;; capitalized `All' reads as a keyword, not a type name.
     (,rackton--quantifier-regexp . font-lock-keyword-face)

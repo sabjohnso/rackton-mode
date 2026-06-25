@@ -223,6 +223,57 @@ the watcher, then type the line a character at a time (each through
     (should (rackton-test--has-face-p code "String" 'font-lock-type-face))
     (should (rackton-test--has-face-p code "Char" 'font-lock-type-face))))
 
+(ert-deftest rackton-mode-fontifies-infix-operator ()
+  ;; A backtick-quoted identifier in operator position is infix
+  ;; notation, e.g. (a `+ b) => (+ a b); the operator reads with the
+  ;; infix-operator face, both prelude operators and user names.
+  (should (rackton-test--has-face-p
+           "(1 `+ 2)" "+" 'rackton-infix-operator-face))
+  (should (rackton-test--has-face-p
+           "(3 `add 4)" "add" 'rackton-infix-operator-face)))
+
+(ert-deftest rackton-mode-fontifies-infix-operator-with-backtick ()
+  ;; The backtick that marks the operator is part of the token.
+  (should (rackton-test--has-face-p
+           "(1 `< 2)" "`<" 'rackton-infix-operator-face)))
+
+(ert-deftest rackton-mode-fontifies-infix-sections-and-ctor-operators ()
+  ;; Right section (`op b), left section (a `op), and a constructor
+  ;; used as an operator (`Cons wins over the constructor face).
+  (should (rackton-test--has-face-p "(`< 3)" "<" 'rackton-infix-operator-face))
+  (should (rackton-test--has-face-p "(3 `<)" "<" 'rackton-infix-operator-face))
+  (should (rackton-test--has-face-p
+           "(x `Cons xs)" "Cons" 'rackton-infix-operator-face)))
+
+(ert-deftest rackton-mode-infix-leaves-quasiquote-lists-and-quotes-alone ()
+  ;; The backtick of a quasiquoted list literal (fused to a paren) is
+  ;; not an operator, and a single-quoted symbol is data, not infix.
+  (should-not (rackton-test--has-face-p
+               "`(1 2 3)" "(" 'rackton-infix-operator-face))
+  (should-not (rackton-test--has-face-p
+               "(f 'sym)" "sym" 'rackton-infix-operator-face)))
+
+(ert-deftest rackton-mode-infix-in-strings-stays-string ()
+  ;; A `+ inside a string is text, not an operator.
+  (should (rackton-test--has-face-p "\"a `+ b\"" "`+" 'font-lock-string-face))
+  (should-not (rackton-test--has-face-p
+               "\"a `+ b\"" "`+" 'rackton-infix-operator-face)))
+
+(ert-deftest rackton-mode-infix-overrides-earlier-builtin-face ()
+  ;; scheme-mode paints `+' and `<' as builtins, so an infix `+ would
+  ;; otherwise read as a builtin rather than an operator.  Simulate an
+  ;; earlier rule painting every + (HOW nil prepends, so it runs before
+  ;; rackton's keywords) and confirm the infix rule still wins.
+  (with-temp-buffer
+    (insert "(1 `+ 2)")
+    (rackton-mode)
+    (font-lock-add-keywords nil '(("\\+" . font-lock-builtin-face)))
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "+")
+    (should (eq (get-text-property (match-beginning 0) 'face)
+                'rackton-infix-operator-face))))
+
 (ert-deftest rackton-mode-fontifies-exists-quantifier ()
   ;; `Exists' is the existential dual of `All'; like `All' it heads a
   ;; type scheme and reads as a keyword, not a type name, while the

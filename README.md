@@ -19,6 +19,9 @@ functional language (in the style of Coalton) embedded in Racket.
   constructors in expressions, patterns, and `data` bodies get
   `rackton-constructor-face` (inherits `font-lock-constant-face`;
   customize it via `M-x customize-face`).
+- Infix operators — a backtick-quoted identifier in operator position,
+  as in ``(a `+ b)`` or the sections ``(`< 3)`` and ``(3 `<)`` — read
+  with `rackton-infix-operator-face` (inherits the function-name face).
 - Indentation rules for Rackton's special forms, including the `do`
   style used throughout the rackton repository: binding clauses align
   under the first binding, the trailing expression sits at body indent.
