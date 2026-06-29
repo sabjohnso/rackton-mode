@@ -15,10 +15,17 @@ functional language (in the style of Coalton) embedded in Racket.
 - Types and data constructors are distinguished by position, not just
   capitalization: names in type positions (signatures, arrows,
   declaration heads, constructor fields, GADT clause tails,
-  `#:deriving` lists, export specs) get `font-lock-type-face`, while
+  `:deriving` lists, export specs) get `font-lock-type-face`, while
   constructors in expressions, patterns, and `data` bodies get
   `rackton-constructor-face` (inherits `font-lock-constant-face`;
   customize it via `M-x customize-face`).
+- Keywords are Common-Lisp style: a leading-colon token like
+  `:deriving` or `:from` reads as a builtin. The lone `:` (annotation
+  separator) and `::` (kind separator) are left plain.
+- Qualified references `mod:name` (from `require`'s `qualified-in`)
+  tint the `mod:` prefix with `rackton-qualifier-face` (de-emphasized
+  via `shadow`), while the name keeps its own face — so a qualified
+  constructor `mod:Cons` still reads as a constructor.
 - Infix operators — a backtick-quoted identifier in operator position,
   as in ``(a `+ b)`` or the sections ``(`< 3)`` and ``(3 `<)`` — read
   with `rackton-infix-operator-face` (inherits the function-name face).

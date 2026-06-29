@@ -353,7 +353,7 @@ the watcher, then type the line a character at a time (each through
     (should (rackton-test--has-face-p code "Integer" 'font-lock-type-face))))
 
 (ert-deftest rackton-mode-fontifies-struct-declarations ()
-  (let ((code "(struct Point\n  [x : Integer]\n  [y : Integer]\n  #:deriving Eq Show)"))
+  (let ((code "(struct Point\n  [x : Integer]\n  [y : Integer]\n  :deriving Eq Show)"))
     (should (rackton-test--has-face-p code "Point" 'font-lock-type-face))
     (should (rackton-test--has-face-p code "Integer" 'font-lock-type-face))
     (should (rackton-test--has-face-p code "Eq" 'font-lock-type-face))
@@ -376,24 +376,35 @@ the watcher, then type the line a character at a time (each through
     (should (rackton-test--has-face-p code "Some" 'rackton-constructor-face))
     (should (rackton-test--has-face-p code "Maybe" 'font-lock-type-face))))
 
-(ert-deftest rackton-mode-fontifies-racket-keywords ()
+(ert-deftest rackton-mode-fontifies-keywords ()
+  ;; A Rackton keyword is a leading-colon token, :deriving or :derive
+  ;; (Rackton dropped the Racket #: spelling).
   (should (rackton-test--has-face-p
-           "(struct P [x : Integer] #:deriving Eq)"
-           "#:deriving" 'font-lock-builtin-face))
+           "(struct P [x : Integer] :deriving Eq)"
+           ":deriving" 'font-lock-builtin-face))
   (should (rackton-test--has-face-p
-           "(protocol (C w)\n  #:derive\n  ((Semigroup (define (mappend a b) a))))"
-           "#:derive" 'font-lock-builtin-face)))
+           "(protocol (C w)\n  :derive\n  ((Semigroup (define (mappend a b) a))))"
+           ":derive" 'font-lock-builtin-face)))
+
+(ert-deftest rackton-mode-colon-separators-are-not-keywords ()
+  ;; A lone colon is the annotation separator and :: is the kind
+  ;; separator; neither is a keyword, so neither reads as a builtin.
+  (should-not (rackton-test--has-face-p
+               "[x : Integer]" ":" 'font-lock-builtin-face))
+  (should-not (rackton-test--has-face-p
+               "(data (Phantom (a :: Stack)) (MkP Integer))"
+               "::" 'font-lock-builtin-face)))
 
 (ert-deftest rackton-mode-classifies-protocol-keyword-blocks ()
   (let ((code (concat "(protocol (Stack (s => Eq))\n"
                       "  (: push (-> a (s a) (s a)))\n"
-                      "  #:requires (Show s)\n"
-                      "  #:derive\n"
+                      "  :requires (Show s)\n"
+                      "  :derive\n"
                       "  ((Semigroup\n"
                       "    (define (mappend a b) (Combine a b)))))")))
     ;; superclass bound in the head
     (should (rackton-test--has-face-p code "Eq" 'font-lock-type-face))
-    ;; constraint after #:requires
+    ;; constraint after :requires
     (should (rackton-test--has-face-p code "Show" 'font-lock-type-face))
     ;; the superclass a derivation clause names
     (should (rackton-test--has-face-p code "Semigroup" 'font-lock-type-face))
@@ -433,7 +444,9 @@ the watcher, then type the line a character at a time (each through
    "(let% loop ([a ma])\n  body)"))
 
 (ert-deftest rackton-mode-fontifies-module-forms ()
-  (let ((code (concat "(require rackton/data/list (only-in m f))\n"
+  (let ((code (concat "(require rackton/data/list (only-in m f)\n"
+                      "         (except-in m g) (rename-in m [a b])\n"
+                      "         (prefix-in p: m) (qualified-in st m))\n"
                       "(provide (all-defined-out)\n"
                       "         (all-from-out m)\n"
                       "         (data-out Maybe)\n"
@@ -441,10 +454,33 @@ the watcher, then type the line a character at a time (each through
                       "         (protocol-out Stack)\n"
                       "         (rename-out [f g])\n"
                       "         (except-out (all-from-out m) f))")))
-    (dolist (form '("require" "only-in" "provide" "all-defined-out"
+    (dolist (form '("require" "only-in" "except-in" "rename-in" "prefix-in"
+                    "qualified-in" "provide" "all-defined-out"
                     "all-from-out" "data-out" "struct-out" "protocol-out"
                     "rename-out" "except-out"))
       (should (rackton-test--has-face-p code form 'font-lock-keyword-face)))))
+
+(ert-deftest rackton-mode-fontifies-qualified-references ()
+  ;; A qualified reference mod:name (from `qualified-in') tints the
+  ;; mod: prefix with the qualifier face; the name keeps its own face,
+  ;; so a qualified constructor still reads as a constructor and a
+  ;; qualified value stays plain.
+  (let ((code "(st:Push 1 st:Empty)"))
+    (should (rackton-test--has-face-p code "st:" 'rackton-qualifier-face))
+    (should (rackton-test--has-face-p code "Push" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Empty" 'rackton-constructor-face)))
+  (let ((code "(st:depth s)"))
+    (should (rackton-test--has-face-p code "st:" 'rackton-qualifier-face))
+    ;; a qualified value name carries no type/constructor face
+    (should-not (rackton-test--has-face-p code "depth" 'rackton-constructor-face))
+    (should-not (rackton-test--has-face-p code "depth" 'font-lock-type-face))))
+
+(ert-deftest rackton-mode-qualified-name-in-pattern ()
+  ;; Qualified constructors appear in patterns too.
+  (let ((code "(match x\n  [st:Empty 0]\n  [(st:Push v _) v])"))
+    (should (rackton-test--has-face-p code "st:" 'rackton-qualifier-face))
+    (should (rackton-test--has-face-p code "Empty" 'rackton-constructor-face))
+    (should (rackton-test--has-face-p code "Push" 'rackton-constructor-face))))
 
 (ert-deftest rackton-mode-keywords-in-strings-stay-strings ()
   (should (rackton-test--has-face-p

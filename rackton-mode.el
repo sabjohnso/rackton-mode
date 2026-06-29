@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.26
+;; Version: 0.5.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -65,6 +65,16 @@ function-name face by default, since the operator names a function
 applied between its terms; customize it via \\[customize-face]."
   :group 'rackton)
 
+(defface rackton-qualifier-face
+  '((t :inherit shadow))
+  "Face for the qualifier of a qualified reference.
+A name imported via `require's `qualified-in' is referred to as
+`mod:name'; this face tints the `mod:' prefix, leaving the name itself
+its ordinary face.  De-emphasized (the `shadow' face) by default, since
+the qualifier is secondary to the name; customize it via
+\\[customize-face]."
+  :group 'rackton)
+
 ;;; Surface forms
 ;;
 ;; These lists are the single statement of which names Rackton treats
@@ -87,12 +97,14 @@ applied between its terms; customize it via \\[customize-face]."
   "Forms that head Rackton expressions.")
 
 (defconst rackton-module-forms
-  '("require" "only-in"
+  '("require" "only-in" "except-in" "rename-in" "prefix-in" "qualified-in"
     "provide" "all-defined-out" "all-from-out" "data-out" "struct-out"
     "protocol-out" "rename-out" "except-out")
   "Module import/export forms and their spec sub-form introducers.
-See the \"Module forms\" and \"provide-specs\" sections of the Rackton
-reference.")
+The import sub-forms — including `qualified-in', which prefixes each
+imported term-level name as `prefix:name' — are listed in the
+\"Module forms\" section of the Rackton reference; the export specs in
+\"provide-specs\".")
 
 (defconst rackton-clause-keywords
   '("else")
@@ -113,9 +125,21 @@ dual — (Exists (a) …) — for first-class existential types.")
   (regexp-opt rackton-type-quantifiers 'symbols)
   "Match the type quantifier `All' or `∀' as a whole symbol.")
 
+(defconst rackton--qualifier-prefix-regexp
+  "[[:alnum:]!?_./+*<>=-]+:"
+  "A qualifier and its separating colon, as in `mod:'.
+A qualified reference (from `require's `qualified-in') is written
+`mod:name' with a single internal colon; this matches the `mod:' part.
+The character class excludes the colon, so it stops at the separator
+and never spans the `::' kind separator or a leading-colon keyword.")
+
 (defconst rackton--type-name-regexp
-  "\\_<[A-Z][[:alnum:]!?_/-]*\\_>"
-  "Capitalized identifiers: types and data constructors by convention.")
+  (concat "\\_<\\(?:" rackton--qualifier-prefix-regexp "\\)?"
+          "\\([A-Z][[:alnum:]!?_/-]*\\)\\_>")
+  "A capitalized name (group 1), optionally behind a qualifier prefix.
+Types and data constructors share this lexical shape by convention; the
+optional `mod:' prefix lets a qualified constructor like `mod:Cons' be
+recognized by its name (group 1) while the prefix is tinted separately.")
 
 ;;; Telling types and constructors apart
 ;;
@@ -123,7 +147,7 @@ dual — (Exists (a) …) — for first-class existential types.")
 ;; classification is positional: a capitalized name is a TYPE when an
 ;; enclosing form puts it in type-level position (a `(: ...)'
 ;; signature, an arrow, a declaration head, a constructor's field, the
-;; tail of a GADT clause, a #:deriving list, an export spec), and a
+;; tail of a GADT clause, a :deriving list, an export spec), and a
 ;; CONSTRUCTOR otherwise (expressions, match patterns, and the
 ;; constructor names a `data'/GADT declaration introduces).
 
@@ -170,16 +194,17 @@ That shape is a GADT constructor clause or a struct field."
     (and second (eq (rackton--symbol-at second) ':))))
 
 (defun rackton--governing-keyword (open child)
-  "The #:keyword governing CHILD inside the form at OPEN, or nil.
-That is the nearest Racket keyword before CHILD at CHILD's own
-nesting level, returned as a string."
+  "The :keyword governing CHILD inside the form at OPEN, or nil.
+That is the nearest leading-colon keyword before CHILD at CHILD's own
+nesting level, returned as a string (e.g. \":requires\")."
   (save-excursion
     ;; Depth first: `syntax-ppss' moves point.
     (let ((depth (1+ (car (syntax-ppss open))))
           (found nil))
       (goto-char child)
       (while (and (not found)
-                  (re-search-backward "#:\\(?:\\sw\\|\\s_\\)+" (1+ open) t))
+                  (re-search-backward "\\_<:[[:alpha:]]\\(?:\\sw\\|\\s_\\)*"
+                                      (1+ open) t))
         (when (= (car (syntax-ppss)) depth)
           (setq found (match-string-no-properties 0))))
       found)))
@@ -208,14 +233,14 @@ deciding context is a constructor."
          ((and (memq head rackton--typed-head-forms)
                (eq child (rackton--element-start open 1)))
           (setq decided 'type))
-         ;; protocol keyword blocks: #:requires names constraints;
-         ;; #:derive takes (SuperClass (define ...) ...) clauses whose
+         ;; protocol keyword blocks: :requires names constraints;
+         ;; :derive takes (SuperClass (define ...) ...) clauses whose
          ;; head names a superclass while the defines are expressions.
          ((eq head 'protocol)
           (let ((governing (rackton--governing-keyword open child)))
-            (cond ((equal governing "#:requires")
+            (cond ((equal governing ":requires")
                    (setq decided 'type))
-                  ((and (equal governing "#:derive")
+                  ((and (equal governing ":derive")
                         (or (eq inner pos)
                             (eq pos (rackton--element-start inner 0))))
                    (setq decided 'type)))))
@@ -223,7 +248,7 @@ deciding context is a constructor."
          ((memq head rackton--data-forms)
           (setq decided
                 (cond ((equal (rackton--governing-keyword open child)
-                              "#:deriving")
+                              ":deriving")
                        'type)
                       ;; a bare nullary constructor, e.g. None
                       ((eq child pos) 'constructor)
@@ -242,7 +267,9 @@ deciding context is a constructor."
 
 (defun rackton--search-capitalized (limit pred)
   "Find the next capitalized name before LIMIT whose start satisfies PRED.
-Set the match data and leave point after the name; return non-nil when
+The name is match group 1 (a bare name, or the tail of a qualified
+`mod:name'); font-lock faces that group, and PRED is asked about the
+name's position.  Leave point after the match; return non-nil when
 found, as a font-lock matcher must."
   (let (found)
     (while (and (not found)
@@ -251,7 +278,7 @@ found, as a font-lock matcher must."
       ;; so the search always advances.
       (setq found (save-excursion
                     (save-match-data
-                      (funcall pred (match-beginning 0))))))
+                      (funcall pred (match-beginning 1))))))
     found))
 
 (defun rackton--match-type-name (limit)
@@ -297,10 +324,16 @@ carries never repaints operator-looking text there."
     ;; (the REPL) highlight it too.
     ("(define[ \t\n]+(?\\(\\(?:\\sw\\|\\s_\\)+\\)"
      (1 font-lock-function-name-face))
-    ;; Racket keywords (#:deriving, #:derive, #:from, ...).  Stated
-    ;; here rather than inherited from scheme-mode's keywords so
-    ;; buffers that only add these keywords (the REPL) highlight them.
-    ("#:\\(?:\\sw\\|\\s_\\)+" . font-lock-builtin-face)
+    ;; Rackton keywords (:deriving, :derive, :from, ...) — leading-colon
+    ;; option labels, never values.  Stated here rather than inherited
+    ;; from scheme-mode's keywords so buffers that only add these
+    ;; keywords (the REPL) highlight them.  The `[[:alpha:]]' after the
+    ;; colon excludes the `::' kind separator and the lone `:'.
+    ("\\_<:[[:alpha:]]\\(?:\\sw\\|\\s_\\)*" . font-lock-builtin-face)
+    ;; The kind separator `::' is a separator, not a keyword, but
+    ;; scheme-mode paints every colon-led token as a builtin; undo that
+    ;; so `::' reads plain, like the lone annotation `:'.
+    ("\\_<::\\_>" (0 'default t))
     ;; Infix operators: a backtick-quoted identifier, as in (a `+ b),
     ;; (`< 3), or (3 `<).  The whole `op token reads with the operator
     ;; face.  Matched lexically — a backtick fused to a symbol — which
@@ -314,11 +347,19 @@ carries never repaints operator-looking text there."
     ;; operator; the matcher itself skips strings and comments, so that
     ;; override never reaches their text.
     (rackton--match-infix-operator 0 'rackton-infix-operator-face t)
+    ;; The qualifier of a qualified reference `mod:name': tint the
+    ;; `mod:' prefix, leaving the name to the rules below.  The trailing
+    ;; symbol char keeps a bare `mod:' (e.g. a prefix-in argument) from
+    ;; matching, and the leading `\\_<' keeps it off the `::' separator.
+    (,(concat "\\_<\\(" rackton--qualifier-prefix-regexp "\\)\\(?:\\sw\\|\\s_\\)")
+     (1 'rackton-qualifier-face))
     ;; The type quantifier `All'/`∀'.  Before the type-name rule so its
     ;; capitalized `All' reads as a keyword, not a type name.
     (,rackton--quantifier-regexp . font-lock-keyword-face)
-    (rackton--match-type-name . font-lock-type-face)
-    (rackton--match-constructor . 'rackton-constructor-face))
+    ;; Types and constructors face the name (group 1), so a qualified
+    ;; `mod:Cons' colors `Cons' while the prefix stays the qualifier face.
+    (rackton--match-type-name (1 font-lock-type-face))
+    (rackton--match-constructor (1 'rackton-constructor-face)))
   "Font-lock rules layered on top of those inherited from scheme-mode.")
 
 ;;; Indentation

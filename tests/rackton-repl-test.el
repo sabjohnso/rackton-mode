@@ -136,12 +136,12 @@ swept away by `kill-all-local-variables'."
     (search-forward "Some")
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'rackton-constructor-face))
-    ;; Racket keywords must highlight here too, not only in source
+    ;; Rackton keywords must highlight here too, not only in source
     ;; buffers (where scheme-mode's own rule covers them).
-    (insert "\nλ> (struct P [x : Integer] #:deriving Eq)")
+    (insert "\nλ> (struct P [x : Integer] :deriving Eq)")
     (font-lock-ensure)
     (goto-char (point-min))
-    (search-forward "#:deriving")
+    (search-forward ":deriving")
     (should (eq (get-text-property (match-beginning 0) 'face)
                 'font-lock-builtin-face))))
 
