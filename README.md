@@ -55,7 +55,22 @@ how Scheme buffers indent.
 
 ```elisp
 (add-to-list 'load-path "/path/to/rackton-mode")
-(require 'rackton-mode)
+(require 'rackton)
+```
+
+That loads the major mode together with every integration: the
+inferior REPL, the eglot/LSP bridge, the dape/debug bridge, and
+signature search. The eglot and dape hookups install themselves under
+`with-eval-after-load`, so neither package is pulled in, and nothing
+external is started, until it is present and used.
+
+The umbrella requires Emacs 28.1, the floor set by the REPL, LSP, and
+debug bridges. For a narrower set — or for Emacs 27.1, which
+`rackton-mode` alone still supports — require the individual features
+instead:
+
+```elisp
+(require 'rackton-mode)   ; the major mode alone
 (require 'rackton-repl)   ; optional: the inferior REPL
 (require 'rackton-lsp)    ; optional: eglot/LSP integration
 (require 'rackton-dap)    ; optional: dape/debug integration
