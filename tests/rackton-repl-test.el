@@ -805,6 +805,49 @@ is now a type (see the reply-type tests)."
   (rackton-test--ensure-repl)
   (should (member "match" (rackton-repl--completions "ma"))))
 
+(ert-deftest rackton-repl-complete-module-finds-collection-path ()
+  "Integration: ,complete-module over the pipe returns a known module."
+  (rackton-test--ensure-repl)
+  (should (member "rackton/data/list"
+                  (rackton-repl--module-completions "rackton/data/l"))))
+
+(ert-deftest rackton-repl-module-completions-parses-reply ()
+  "The module helper splits the ,complete-module reply into candidates."
+  (cl-letf (((symbol-function 'rackton-repl-query)
+             (lambda (cmd &rest _)
+               (should (string-prefix-p ",complete-module " cmd))
+               "rackton/data/lazy\nrackton/data/list\n")))
+    (should (equal (rackton-repl--module-completions "rackton/data/l")
+                   '("rackton/data/lazy" "rackton/data/list")))))
+
+(ert-deftest rackton-repl-completion-offers-module-paths-in-require ()
+  "Inside a require, the capf answers with module paths over the whole
+path, and defers to `,complete-module' rather than `,complete'."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () t))
+            ((symbol-function 'eglot-managed-p) (lambda () nil))
+            ((symbol-function 'rackton-repl--module-completions)
+             (lambda (_) '("rackton/data/list"))))
+    (with-temp-buffer
+      (rackton-mode)
+      (insert "(require rackton/data/l")
+      (let ((res (rackton-repl-completion-at-point)))
+        (should (equal (buffer-substring-no-properties (nth 0 res) (nth 1 res))
+                       "rackton/data/l"))
+        (should (equal (nth 2 res) '("rackton/data/list")))))))
+
+(ert-deftest rackton-repl-completion-offers-files-in-require-string ()
+  "Inside a require string, the capf answers with a file-name table and
+needs no running REPL."
+  (cl-letf (((symbol-function 'rackton-repl--live-p) (lambda () nil))
+            ((symbol-function 'eglot-managed-p) (lambda () nil)))
+    (with-temp-buffer
+      (rackton-mode)
+      (insert "(require \"hel")
+      (let ((res (rackton-repl-completion-at-point)))
+        (should (equal (buffer-substring-no-properties (nth 0 res) (nth 1 res))
+                       "hel"))
+        (should (eq (nth 2 res) #'completion-file-name-table))))))
+
 ;;; Integration: transport
 
 (ert-deftest rackton-repl-starts-and-prompts ()

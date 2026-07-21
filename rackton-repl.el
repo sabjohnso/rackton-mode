@@ -1,7 +1,7 @@
 ;;; rackton-repl.el --- Inferior REPL for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.4.33
+;; Version: 0.5.0
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: languages, processes
 
@@ -843,21 +843,43 @@ Nil when the REPL offers none."
     (and (not (string-empty-p reply))
          (split-string reply "\n" t))))
 
+(defun rackton-repl--module-completions (prefix)
+  "Module paths completing PREFIX, from the REPL's ,complete-module command.
+Nil when the REPL offers none."
+  (let ((reply (rackton-repl-query (concat ",complete-module " prefix) 2)))
+    (and (not (string-empty-p reply))
+         (split-string reply "\n" t))))
+
 (defun rackton-repl-completion-at-point ()
-  "Completion-at-point for Rackton names, answered by the REPL.
+  "Completion-at-point for Rackton, answered by context.
 For `completion-at-point-functions', in both the REPL and source
-buffers.  Quiet unless the REPL is running — completion must never
-launch a process — and quiet when eglot manages the buffer, so its
-LSP completion takes over.  Non-exclusive: when it offers nothing,
-later functions (e.g. comint's filename completion) still run."
-  (when (and (rackton-repl--live-p)
-             (not (and (fboundp 'eglot-managed-p) (eglot-managed-p))))
-    (let ((bounds (bounds-of-thing-at-point 'symbol)))
-      (when bounds
-        (let ((cands (rackton-repl--completions
-                      (buffer-substring-no-properties (car bounds) (cdr bounds)))))
-          (when cands
-            (list (car bounds) (cdr bounds) cands :exclusive 'no)))))))
+buffers.  Quiet when eglot manages the buffer, so its LSP completion
+takes over.  Otherwise the position decides the source: a module path
+inside a `require' comes from the REPL's ,complete-module (so it is
+quiet unless the REPL is running — completion must never launch a
+process); a string spec's file path comes from the file-name table and
+needs no REPL; anywhere else, a name from ,complete.  Non-exclusive:
+when it offers nothing, later functions still run."
+  (unless (and (fboundp 'eglot-managed-p) (eglot-managed-p))
+    (let ((ctx (rackton-require-context-at-point)))
+      (cond
+       ((eq (car ctx) 'relative-path)
+        (list (nth 1 ctx) (nth 2 ctx)
+              #'completion-file-name-table :exclusive 'no))
+       ((eq (car ctx) 'module-path)
+        (when (rackton-repl--live-p)
+          (let ((cands (rackton-repl--module-completions
+                        (buffer-substring-no-properties (nth 1 ctx) (nth 2 ctx)))))
+            (when cands
+              (list (nth 1 ctx) (nth 2 ctx) cands :exclusive 'no)))))
+       ((rackton-repl--live-p)
+        (let ((bounds (bounds-of-thing-at-point 'symbol)))
+          (when bounds
+            (let ((cands (rackton-repl--completions
+                          (buffer-substring-no-properties
+                           (car bounds) (cdr bounds)))))
+              (when cands
+                (list (car bounds) (cdr bounds) cands :exclusive 'no))))))))))
 
 (defun rackton-repl--completion-setup ()
   "Hook `rackton-repl-completion-at-point' into the current buffer.

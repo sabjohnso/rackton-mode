@@ -730,5 +730,108 @@ on a void keymap."
                  (error "unexpected require: %s" feature)))))
     (should-error (rackton-enable-paredit-curly) :type 'user-error)))
 
+;;; require completion context
+
+(defun rackton-test--context-at (marked)
+  "Parse MARKED (a `|'-marked buffer string) in `rackton-mode' and
+return `rackton-require-context-at-point' with the point at the `|',
+as (KIND PREFIX) — the prefix being the text the context would
+replace, so a test states it without counting columns."
+  (with-temp-buffer
+    (insert marked)
+    (rackton-mode)
+    (goto-char (point-min))
+    (search-forward "|")
+    (delete-char -1)
+    (let ((ctx (rackton-require-context-at-point)))
+      (and ctx
+           (list (nth 0 ctx)
+                 (buffer-substring-no-properties (nth 1 ctx) (nth 2 ctx)))))))
+
+(ert-deftest rackton-require-context-outside-require-is-nil ()
+  (should-not (rackton-test--context-at "(define (f x) (ma|))"))
+  (should-not (rackton-test--context-at "ma|"))
+  ;; the head of a require is a name, not a module reference
+  (should-not (rackton-test--context-at "(requ|)")))
+
+(ert-deftest rackton-require-context-module-path ()
+  (should (equal (rackton-test--context-at "(require rackton/da|)")
+                 '(module-path "rackton/da")))
+  ;; an empty argument position is a module path with no prefix typed
+  (should (equal (rackton-test--context-at "(require |)")
+                 '(module-path "")))
+  ;; every argument, not just the first
+  (should (equal (car (rackton-test--context-at
+                       "(require rackton/data/list rackton/te|)"))
+                 'module-path)))
+
+(ert-deftest rackton-require-context-through-sub-forms ()
+  (dolist (probe '(("(require (only-in rackton/da|))"    . module-path)
+                   ("(require (except-in rackton/da|))"  . module-path)
+                   ("(require (rename-in rackton/da|))"  . module-path)
+                   ("(require (prefix-in l: rackton/da|))" . module-path)
+                   ("(require (qualified-in l rackton/da|))" . module-path)
+                   ("(require (prefix-in p: (only-in rackton/da|)))" . module-path)
+                   ;; the imported names of a sub-form are not paths
+                   ("(require (only-in rackton/data/list ma|))" . nil)
+                   ;; an unhandled sub-form offers no module path
+                   ("(require (combine-in rackton/da|))" . nil)
+                   ;; a sub-form outside a require is not a require context
+                   ("(only-in rackton/da|)" . nil)))
+    (should (eq (car (rackton-test--context-at (car probe)))
+                (cdr probe)))))
+
+(ert-deftest rackton-require-context-relative-path ()
+  (should (equal (rackton-test--context-at "(require \"hel|\")")
+                 '(relative-path "hel")))
+  ;; an unterminated string still classifies, mid-edit
+  (should (equal (rackton-test--context-at "(require \"hel|")
+                 '(relative-path "hel")))
+  ;; a string in a sub-form's module position
+  (should (eq (car (rackton-test--context-at "(require (only-in \"hel|\"))"))
+              'relative-path))
+  ;; a string outside a module position is nothing special
+  (should-not (rackton-test--context-at "(define s \"hel|\")")))
+
+(ert-deftest rackton-argument-index-is-monotonic-and-total ()
+  "Argument index never decreases as the point advances through a form,
+the head is index 0, and the scan signals no error at any position —
+including a form left unbalanced mid-edit."
+  (dolist (form '("(require rackton/data/list (only-in m f) g)"
+                  "(a b (c d) e)"
+                  "(require rackton/data/list (prefix-in p:"   ; unbalanced tail
+                  "()"))
+    (with-temp-buffer
+      (insert form)
+      (rackton-mode)
+      (let ((open (point-min))            ; the outermost open paren
+            (prev -1))
+        (should (= (rackton--argument-index open (1+ open)) 0))  ; head
+        (dotimes (k (- (point-max) open))
+          (let ((idx (rackton--argument-index open (+ open k))))
+            (should (integerp idx))
+            (should (>= idx prev))
+            (setq prev idx)))))))
+
+(ert-deftest rackton-require-context-is-total ()
+  "The context is nil or a well-formed (KIND BEG END) with BEG<=END=point,
+and never signals, at every position of assorted delimiter-laced and
+truncated buffers."
+  (dolist (text '("(require (only-in [m] \"s(\" ;c\n rackton/x))"
+                  "(require \"a\" (prefix-in p: (rename-in"
+                  "{[(\"|;`,"
+                  "(require rackton/data/list"
+                  ""))
+    (with-temp-buffer
+      (insert text)
+      (rackton-mode)
+      (dotimes (k (1+ (- (point-max) (point-min))))
+        (goto-char (+ (point-min) k))
+        (let ((ctx (rackton-require-context-at-point)))
+          (when ctx
+            (should (memq (nth 0 ctx) '(module-path relative-path)))
+            (should (<= (nth 1 ctx) (nth 2 ctx)))
+            (should (= (nth 2 ctx) (point)))))))))
+
 (provide 'rackton-mode-test)
 ;;; rackton-mode-test.el ends here

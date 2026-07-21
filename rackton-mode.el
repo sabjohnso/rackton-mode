@@ -1,7 +1,7 @@
 ;;; rackton-mode.el --- Major mode for the Rackton language  -*- lexical-binding: t; -*-
 
 ;; Author: Samuel B. Johnson <samuel.bryant.johnson@gmail.com>
-;; Version: 0.6.0
+;; Version: 0.7.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: languages, lisp
 
@@ -549,6 +549,93 @@ relatives (`define-alias', `define-effect', …)."
     (dolist (o (nth 9 (syntax-ppss pos)) open)
       (when (eq (rackton--symbol-at (1+ o)) 'define)
         (setq open o)))))
+
+;;; Require completion context
+
+;; Where each `require' sub-form keeps the module reference it wraps: the
+;; 0-based argument index (0 is the sub-form's own head).  This is the
+;; Emacs mirror of require-spec-shape.rkt on the Rackton side; the two
+;; must agree, or completion offers module paths where inference will not
+;; look for them.  `combine-in' is absent by design — it names several
+;; modules, so no single position is *the* reference.
+(defconst rackton--require-wrapper-base-index
+  '((only-in . 1) (except-in . 1) (rename-in . 1)
+    (prefix-in . 2) (qualified-in . 2))
+  "Alist from a `require' sub-form symbol to its module-reference index.")
+
+(defun rackton--argument-index (open pos)
+  "The 0-based argument index POS occupies in the list opening at OPEN.
+0 is the head.  A POS in the whitespace past the last datum is the next,
+not-yet-typed argument.  Tolerates an unbalanced tail (a datum still
+being typed): a scan error ends the count where it stopped."
+  (save-excursion
+    (goto-char (1+ open))
+    (let ((index 0) (i -1))
+      (condition-case nil
+          (catch 'done
+            (while t
+              (forward-comment (point-max))
+              (when (or (>= (point) pos)
+                        (memq (char-after) '(?\) ?\] ?\})))
+                (throw 'done nil))
+              (forward-sexp 1)
+              (setq i (1+ i))
+              (if (<= pos (point))
+                  (progn (setq index i) (throw 'done nil))
+                (setq index (1+ i)))))
+        (scan-error nil))
+      index)))
+
+(defun rackton--require-module-position-p (opens pos)
+  "Non-nil when POS lies in a module-reference position.
+OPENS is the enclosing open-paren positions, innermost first.  A
+`require' puts every argument in module position; a wrapper sub-form
+passes the question outward from its own reference position, so the same
+sub-form written outside a `require' does not qualify."
+  (and opens
+       ;; `head' is an O(1) symbol lookup; the argument index is an
+       ;; O(form-size) scan, so it is computed only once `head' says the
+       ;; enclosing form can put point in a module position.  The common
+       ;; case — completing a name in an ordinary form — pays only the
+       ;; lookup, on every keystroke.
+       (let* ((open (car opens))
+              (head (rackton--symbol-at (1+ open)))
+              (base (cdr (assq head rackton--require-wrapper-base-index))))
+         (cond
+          ((eq head 'require) (>= (rackton--argument-index open pos) 1))
+          ((and base (eql (rackton--argument-index open pos) base))
+           ;; A position just inside this sub-form, so the outer frame
+           ;; sees it as this sub-form's own argument.
+           (rackton--require-module-position-p (cdr opens) (1+ open)))
+          (t nil)))))
+
+(defun rackton-require-context-at-point ()
+  "The completion context at point inside a `require' form.
+Return (KIND BEG END): KIND is `module-path' when point is at a
+collection path or `relative-path' when point is inside a string spec,
+and BEG..END is the text a candidate replaces.  Return nil when point is
+not in a module-reference position of a `require'.
+
+The decision is structural, so it holds mid-edit while the form is still
+unbalanced — the same guarantee complete-context.rkt gives the REPL."
+  (let* ((ppss (syntax-ppss))
+         (string-start (nth 8 ppss))
+         (opens (reverse (nth 9 ppss))))   ; innermost first
+    (cond
+     ((and (nth 3 ppss) string-start)
+      (when (rackton--require-module-position-p opens (point))
+        (list 'relative-path (1+ string-start) (point))))
+     ((rackton--require-module-position-p opens (point))
+      (list 'module-path (rackton--module-prefix-start) (point)))
+     (t nil))))
+
+(defun rackton--module-prefix-start ()
+  "Start of the module-path fragment before point.
+A collection path runs back over name characters and the `/' and `.'
+that separate its segments, stopping at the enclosing delimiter."
+  (save-excursion
+    (skip-chars-backward "^ \t\n()[]{}\";'`,")
+    (point)))
 
 (defun rackton--collapse-whitespace (string)
   "STRING with runs of whitespace collapsed to one space, trimmed.

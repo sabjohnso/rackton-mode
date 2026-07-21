@@ -217,6 +217,12 @@ backend is live:
   session's own bindings plus keywords, via the REPL's `,complete`
   command. This also drives `TAB` in the `*rackton-repl*` buffer.
 
+Inside a `require`, completion follows the position instead: a
+collection path (`rackton/data/li…`) completes to installed module
+paths via the REPL's `,complete-module`, and a string spec (`"hel…"`)
+completes to file paths from the file-name table — the latter needs no
+running REPL. eglot answers the same positions itself when connected.
+
 When eglot manages the buffer, the REPL backend steps aside (as the
 eldoc type display does), so LSP completion is authoritative.
 
